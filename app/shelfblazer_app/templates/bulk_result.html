@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block mainattr %} data-hue="{{ type_hue(slug) }}"{% endblock %}{% block title %}Bulk edit done{% endblock %}
+{% block body %}<div class="hero"><div><span class="typechip">{{ icon(slug) }}{{ schema.name }}s</span><h1>Bulk edit: {{ res.description }}</h1></div></div>
+<p class="lead"><strong>{{ res.changed|length }}</strong> changed · {{ res.unchanged|length }} already as requested · {{ res.skipped|length }} skipped · {{ res.errors|length }} could not be changed</p>
+{% if res.sha %}<div class="callout">Saved as one git commit (<code>{{ res.sha[:8] }}</code>).
+<form method="post" action="/bulk/undo" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="sha" value="{{ res.sha }}"><input type="hidden" name="back" value="/t/{{ slug }}"><button>Undo this bulk edit</button></form></div>{% endif %}
+{% if res.changed %}<h2>Changed</h2><p>{% for i in res.changed %}<a class="rid" href="/r/{{ i }}">{{ i }}</a> {% endfor %}</p>{% endif %}
+{% if res.skipped %}<h2>Skipped</h2><ul>{% for i, why in res.skipped %}<li><a class="rid" href="/r/{{ i }}">{{ i }}</a> <span class="muted">{{ names.get(i, '') }}</span> · {{ why }}</li>{% endfor %}</ul>{% endif %}
+{% if res.errors %}<h2>Not changed (invalid)</h2><ul>{% for i, why in res.errors.items() %}<li><a class="rid" href="/r/{{ i }}">{{ i }}</a> <span class="muted">{{ names.get(i, '') }}</span> · {{ why }}</li>{% endfor %}</ul>{% endif %}
+<p><a class="btn" href="/t/{{ slug }}">Back to the list</a></p>{% endblock %}

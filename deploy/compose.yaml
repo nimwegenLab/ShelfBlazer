@@ -1,0 +1,21 @@
+# On the VM: docker compose --env-file .env up -d
+# .env (next to this file) can set: SB_TAG (image tag), SB_HOME (host data folder), SB_UID/SB_GID (owner of that folder), SB_PORT.
+services:
+  shelfblazer:
+    image: shelfblazer:${SB_TAG:-latest}
+    restart: unless-stopped
+    user: "${SB_UID:-1000}:${SB_GID:-1000}"
+    environment:
+      SHELFBLAZER_HOME: /srv/shelfblazer
+    volumes:
+      - "${SB_HOME:-/srv/shelfblazer}:/srv/shelfblazer"
+    ports:
+      - "${SB_PORT:-8000}:8000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Plain HTTP for the test (VPN only). Behind a TLS proxy, publish the port on 127.0.0.1 only ("127.0.0.1:${SB_PORT:-8000}:8000"),
+    # cap request bodies in the proxy, and tell the app which address the proxy has, so login throttling sees real client addresses:
+    #   ["shelfblazer","run","--host","0.0.0.0","--port","8000","--https","--forwarded-allow-ips","172.17.0.1"]   (the proxy's address as seen from the container)
+    command: ["shelfblazer", "run", "--host", "0.0.0.0", "--port", "8000"]

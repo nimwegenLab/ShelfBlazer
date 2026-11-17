@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% block mainattr %} data-hue="{{ type_hue(slug) }}"{% endblock %}{% block title %}Bulk edit {{ schema.name|lower }}s{% endblock %}
+{% block body %}<div class="hero"><div><span class="typechip">{{ icon(slug) }}{{ schema.name }}s</span><h1>Bulk edit</h1></div></div>
+<p><strong>{{ ids|length }}</strong> selected · you can edit <strong>{{ n_edit }}</strong>{% if n_skip %} · <strong>{{ n_skip }}</strong> will be skipped (only their owner or an administrator can edit them){% endif %}.</p>
+{% if errors %}<div class="flash err">{% for k, v in errors.items() %}{{ v }} {% endfor %}</div>{% endif %}
+<form method="post" action="/t/{{ slug }}/bulk/apply" class="edit bulkform"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+{% for i in ids %}<input type="hidden" name="ids" value="{{ i }}">{% endfor %}
+<fieldset><legend>What should happen?</legend>
+<label class="chk"><input type="radio" name="action" value="set" {% if values.get('action', 'set') == 'set' %}checked{% endif %}> Set a field to one value</label>
+{% if multi %}<label class="chk"><input type="radio" name="action" value="add" {% if values.get('action') == 'add' %}checked{% endif %}> Add one option or link to a field</label>
+<label class="chk"><input type="radio" name="action" value="remove" {% if values.get('action') == 'remove' %}checked{% endif %}> Remove one option or link from a field</label>{% endif %}
+<label class="chk"><input type="radio" name="action" value="archive"> Archive</label>
+<label class="chk"><input type="radio" name="action" value="restore"> Restore from archive</label>
+{% if is_admin %}<label class="chk"><input type="radio" name="action" value="owner" {% if values.get('action') == 'owner' %}checked{% endif %}> Change owner (administrators)</label>{% endif %}</fieldset>
+
+<div class="bulk-sec" data-for="set"><label>Field<select name="field" id="set-field">{% for f in fields %}<option value="{{ f.key }}" {% if values.get('field') == f.key %}selected{% endif %}>{{ f.label }}</option>{% endfor %}</select></label>
+{% for f in fields %}<div class="bulk-val" data-field="{{ f.key }}"><label>New value for {{ f.label }} <span class="muted small">(empty clears it)</span>
+{% if f.type == 'longtext' %}<textarea name="value_{{ f.key }}" rows="3"></textarea>
+{% elif f.type == 'bool' %}<select name="value_{{ f.key }}"><option value="yes">yes</option><option value="no">no</option></select>
+{% elif f.type == 'select' %}<select name="value_{{ f.key }}"><option value=""></option>{% for v, l in f.options %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+{% elif f.type == 'multiselect' %}<span class="checks">{% for v, l in f.options %}<label class="chk"><input type="checkbox" name="value_{{ f.key }}" value="{{ v }}"> {{ l }}</label>{% endfor %}</span>
+{% elif f.type == 'number' %}<input name="value_{{ f.key }}" inputmode="decimal">
+{% elif f.type == 'date' %}<input type="date" name="value_{{ f.key }}">
+{% elif f.type == 'url' %}<input type="url" name="value_{{ f.key }}" placeholder="https://">
+{% elif f.type == 'ref' %}<input class="mono" name="value_{{ f.key }}" data-ref-to="{{ f.to or '*' }}" data-multiple="1" placeholder="IDs, e.g. PL-142, PL-12">
+{% else %}<input name="value_{{ f.key }}">{% endif %}</label></div>{% endfor %}</div>
+
+{% if multi %}<div class="bulk-sec" data-for="add remove"><label>Field<select name="field" id="opt-field">{% for f in multi %}<option value="{{ f.key }}" {% if values.get('field') == f.key %}selected{% endif %}>{{ f.label }}</option>{% endfor %}</select></label>
+{% for f in multi %}<div class="bulk-val" data-field="{{ f.key }}"><label>Option or record for {{ f.label }}
+{% if f.type == 'multiselect' %}<select name="opt_{{ f.key }}">{% for v, l in f.options %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+{% else %}<input class="mono" name="opt_{{ f.key }}" data-ref-to="{{ f.to or '*' }}" data-multiple="0" placeholder="one ID, e.g. PL-142">{% endif %}</label></div>{% endfor %}</div>{% endif %}
+
+{% if is_admin %}<div class="bulk-sec" data-for="owner"><label>New owner<select name="owner">{% for uid, n, login in people %}<option value="{{ uid }}">{{ n }} ({{ login }})</option>{% endfor %}</select></label></div>{% endif %}
+
+<div class="actions"><button class="primary" id="bulk-apply" {% if not n_edit %}disabled{% endif %}>Apply to {{ n_edit }} record{{ '' if n_edit == 1 else 's' }}</button> <a class="btn" href="/t/{{ slug }}">Cancel</a></div></form>
+<script src="/static/bulk.js" defer></script><script src="/static/picker.js" defer></script>{% endblock %}

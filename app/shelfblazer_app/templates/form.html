@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block mainattr %} data-hue="{{ type_hue(slug) }}"{% endblock %}{% block title %}{{ 'New ' ~ schema.name if mode == 'new' else 'Edit ' ~ rec.id }}{% endblock %}
+{% macro field(f) %}<label class="{{ 'bool' if f.type == 'bool' }}">{{ f.label }}{% if f.required %} *{% endif %}{% if f.help %} <span class="muted small">({{ f.help }})</span>{% endif %}{% if f.error %} <span class="err">{{ f.error }}</span>{% endif %}
+{% if f.type == 'longtext' %}<textarea name="f_{{ f.key }}" rows="5">{{ f.value }}</textarea>
+{% elif f.type == 'bool' %}<input type="checkbox" name="f_{{ f.key }}" {% if f.value %}checked{% endif %}>
+{% elif f.type == 'select' %}<select name="f_{{ f.key }}"><option value=""></option>{% for v, l in f.options %}<option value="{{ v }}" {% if v == f.value %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>{% if f.new_place or f.new_option %}<input class="newplace" name="f_{{ f.key }}_new" value="{{ f.new_value }}" maxlength="60" placeholder="Name of the new {{ 'place' if f.new_place else 'option' }}" aria-label="Name of the new {{ 'place' if f.new_place else 'option' }}">{% endif %}
+{% elif f.type == 'file' %}{% if f.value %}<span class="muted small">Attached: {{ f.value|join(', ') }}</span>{% endif %}<input type="file" name="f_{{ f.key }}" multiple>
+{% elif f.type == 'multiselect' %}<span class="checks"{% if f.new_option %} data-addable{% endif %}>{% for v, l in f.options %}<label class="chk"><input type="checkbox" name="f_{{ f.key }}" value="{{ v }}" {% if v in (f.value or []) %}checked{% endif %}> {{ l }}</label>{% endfor %}</span>{% if f.new_option %}<input class="newopt" name="f_{{ f.key }}_new" value="{{ f.new_value }}" maxlength="60" placeholder="Name of the new option" aria-label="New option to add">{% endif %}
+{% elif f.type == 'number' %}<input name="f_{{ f.key }}" inputmode="decimal" value="{{ f.value }}">
+{% elif f.type == 'date' %}<input type="date" name="f_{{ f.key }}" value="{{ f.value }}">
+{% elif f.type == 'url' %}<input type="url" name="f_{{ f.key }}" value="{{ f.value }}" placeholder="https://">
+{% elif f.type == 'ref' %}<input class="mono" name="f_{{ f.key }}" value="{{ f.value }}" data-ref-to="{{ f.to or '*' }}" data-multiple="{{ 1 if f.multiple else 0 }}" placeholder="IDs separated by commas, e.g. PL-142, PL-12">
+{% elif f.type == 'user' %}<input name="f_{{ f.key }}" value="{{ f.value }}" placeholder="username">
+{% else %}<input name="f_{{ f.key }}" value="{{ f.value }}">{% endif %}</label>{% endmacro %}
+{% block body %}<h1>{% if mode == 'new' %}New {{ schema.name|lower }}{% else %}Edit <span class="idtag">{{ rec.id }}</span>{% endif %}</h1>
+{% if errors %}<div class="flash err">Please fix the highlighted fields.{% if fields|selectattr('type', 'equalto', 'file')|list %} Files are not kept: choose them again.{% endif %}</div>{% endif %}
+<form method="post" class="edit"{% if fields|selectattr('type', 'equalto', 'file')|list %} enctype="multipart/form-data"{% endif %}><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="version" value="{{ version }}">
+<label>Name{% for nf in schema.fields if nf.key == 'name' and nf.help %} <span class="muted small">({{ nf.help }})</span>{% endfor %}{% if errors and errors.name %} <span class="err">{{ errors.name }}</span>{% endif %}<input name="name" value="{{ name }}" required autofocus></label>
+{% for f in fields if not f.fold %}{{ field(f) }}{% endfor %}
+<label>Notes (Markdown)<textarea name="notes" rows="8">{{ notes }}</textarea></label>
+{% set folded = fields|selectattr('fold')|list %}{% if folded %}<details class="fold"{% if folded|selectattr('value')|list or folded|selectattr('error')|list %} open{% endif %}><summary>{{ folded|map(attribute='label')|join(', ') }}</summary>{% for f in folded %}{{ field(f) }}{% endfor %}</details>
+{% endif %}
+{% if mode == 'edit' and is_admin and people %}<label>Owner{% if errors and errors.owner %} <span class="err">{{ errors.owner }}</span>{% endif %}<select name="owner">{% if not people|selectattr(0, 'equalto', owner)|list %}<option value="" selected>{{ display(owner) }} (no longer listed; unchanged)</option>{% endif %}{% for uid, n, login in people %}<option value="{{ uid }}"{% if uid == owner %} selected{% endif %}>{{ n }} ({{ login }})</option>{% endfor %}</select></label>
+{% endif %}
+<div class="actions"><button class="primary" name="action" value="save">Save</button>{% if mode == 'new' %} <button name="action" value="another">Save and add another</button>{% endif %} <a class="btn" href="{{ '/t/' ~ slug if mode == 'new' else '/r/' ~ rec.id }}">Cancel</a></div></form><script src="/static/picker.js" defer></script>{% endblock %}

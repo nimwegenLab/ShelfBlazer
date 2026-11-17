@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% block title %}Set password{% endblock %}
+{% block body %}<h1>Set a password for {{ display_name }}</h1>{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+<form method="post" class="card-form"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+<p class="muted">Username: <code>{{ who }}</code></p>
+<label>New password (8+ characters)<input type="password" name="password" autocomplete="new-password" required autofocus></label>
+<label>Repeat password<input type="password" name="password2" autocomplete="new-password" required></label>
+<button class="primary">Set password</button></form>{% endblock %}

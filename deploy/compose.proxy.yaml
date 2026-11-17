@@ -1,0 +1,25 @@
+# Production behind a TLS-terminating reverse proxy (nginx, Caddy, ...) running on the same host:
+# the app listens on 127.0.0.1:8000 only, the proxy forwards to it.
+#   docker compose -f compose.proxy.yaml --env-file .env up -d
+# .env: SB_TAG (image tag), SB_UID / SB_GID (owner of the data folder on the host),
+#       SB_HOME (host folder holding data/ and instance/, default /srv/shelfblazer).
+services:
+  shelfblazer:
+    image: shelfblazer:${SB_TAG:?set SB_TAG in .env}
+    restart: unless-stopped
+    user: "${SB_UID:?set SB_UID in .env}:${SB_GID:?set SB_GID in .env}"
+    environment:
+      SHELFBLAZER_HOME: /srv/shelfblazer
+    volumes:
+      - "${SB_HOME:-/srv/shelfblazer}:/srv/shelfblazer"
+    ports:
+      - "127.0.0.1:8000:8000"   # only the proxy on this host can reach the app
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # --https: Secure cookies. Trusting X-Forwarded-For from any address is safe here only because the port is bound to
+    # 127.0.0.1 (the proxy is the only client) AND the proxy overwrites the header with the client address
+    # (nginx: proxy_set_header X-Forwarded-For $remote_addr;). With "*" the app takes the FIRST address in the header, so a proxy
+    # that appends ($proxy_add_x_forwarded_for) would let any client pick its address and get around the login throttling.
+    command: ["shelfblazer", "run", "--host", "0.0.0.0", "--port", "8000", "--https", "--forwarded-allow-ips", "*"]

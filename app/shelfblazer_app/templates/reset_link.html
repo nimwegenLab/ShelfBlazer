@@ -1,0 +1,3 @@
+{% extends "base.html" %}{% block title %}Set-password link{% endblock %}
+{% block body %}<h1>Set-password link for {{ target }}</h1><p>Send this one-time link to the user (valid 24 hours; it is shown only now):</p>
+<pre class="seq" id="reset-link">{{ link }}</pre><p><button type="button" class="btn" data-copy="#reset-link">Copy link</button> <span class="muted" id="copy-note" aria-live="polite"></span></p><p><a href="/admin/users">Back to users</a></p>{% endblock %}

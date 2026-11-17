@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block mainattr %} data-hue="{{ type_hue(slug) }}"{% endblock %}{% block title %}Export {{ schema.name|lower }}s{% endblock %}
+{% block body %}<div class="hero"><div><span class="typechip">{{ icon(slug) }}{{ schema.name }}s</span><h1>Export</h1></div></div>
+<p><strong>{{ ids|length }}</strong> selected · one line per record, tab-separated.</p>
+{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+<form method="post" action="/t/{{ slug }}/export/download" class="edit"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+{% for i in ids %}<input type="hidden" name="ids" value="{{ i }}">{% endfor %}
+<fieldset><legend>Columns</legend><span class="checks">{% for key, label in cols %}<label class="chk"><input type="checkbox" name="col" value="{{ key }}"{% if picked is none or key in picked %} checked{% endif %}> {{ label }}</label>{% endfor %}</span></fieldset>
+<p><button class="primary">Download .tsv</button> <a class="btn" href="/t/{{ slug }}">Back to the list</a></p></form>{% endblock %}

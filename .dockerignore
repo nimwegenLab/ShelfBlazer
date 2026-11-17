@@ -1,0 +1,9 @@
+*
+!requirements-runtime.txt
+!packages/
+!app/
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+packages/tests
+app/tests

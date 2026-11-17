@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block title %}Types{% endblock %}
+{% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <strong>Types</strong></p><h1>Types</h1>
+<p class="lead">The kinds of records and their fields. A change applies to everyone at once and is saved in the history.</p>
+{% if warnings %}<div class="flash err">{% for w in warnings %}{{ w }}<br>{% endfor %}</div>{% endif %}
+<div class="tablewrap"><table><thead><tr><th>Type</th><th>ID prefix</th><th>Records</th><th>Fields</th><th title="Who may see the records">Read</th><th title="Who may add records">Create</th><th title="Who may change, archive and delete">Edit</th><th>Order in the menu</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr data-href="/admin/types/{{ r.slug }}" data-hue="{{ type_hue(r.slug) }}"><td><span class="typechip">{{ icon(r.slug) }}{{ r.schema.name }}</span></td><td><code class="rid">{{ r.schema.prefix }}</code></td><td>{{ r.n }}</td><td>{{ r.nfields }}</td>{% for act in ('read', 'create', 'edit') %}<td class="rule{% if r.rules[act][1] %} changed{% endif %}">{{ r.rules[act][0] }}</td>{% endfor %}<td><form method="post" action="/admin/types/{{ r.slug }}/order" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button name="direction" value="up" aria-label="Move {{ r.schema.name }} up" title="Move up"{% if loop.first %} disabled{% endif %}>↑</button><button name="direction" value="down" aria-label="Move {{ r.schema.name }} down" title="Move down"{% if loop.last %} disabled{% endif %}>↓</button></form></td><td><a class="btn" href="/admin/types/{{ r.slug }}">Edit</a></td></tr>{% endfor %}
+</tbody></table></div>
+<p class="muted small">Rules in <strong>bold</strong> differ from the default (read: everyone, create: everyone, edit: the creator and admins). Click a type to change them. Admins can always do everything.</p>
+<h2>New type</h2>
+<form method="post" action="/admin/types/new" class="edit"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+<label>Name (for example “Lipid”)<input name="name" required maxlength="40"></label>
+<label>ID prefix: two capital letters (for example LP, giving LP-1, LP-2 …; it cannot be changed later)<input name="prefix" required maxlength="2" pattern="[A-Za-z]{2}" class="mono" style="max-width:6rem"></label>
+<label>Colour<select name="color"><option value="">default</option>{% for col in colors %}<option>{{ col }}</option>{% endfor %}</select></label>
+<div class="actions"><button class="primary">Create type</button></div></form>{% endblock %}

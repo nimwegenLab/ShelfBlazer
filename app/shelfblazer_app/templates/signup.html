@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block title %}Sign up{% endblock %}
+{% block body %}<h1>Create an account</h1>{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+<form method="post" action="/signup" class="card-form"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+<label>Sign-up passphrase<input type="password" name="passphrase" required></label>
+<label>Username (lowercase)<input name="username" value="{{ username or '' }}" autocomplete="username" required></label>
+<label>Full name<input name="name" maxlength="80" value="{{ name or '' }}" autocomplete="name"></label>
+<label>Password (8+ characters)<input type="password" name="password" autocomplete="new-password" required></label>
+<label>Repeat password<input type="password" name="password2" autocomplete="new-password" required></label>
+<button class="primary">Create account</button></form><p><a href="/login">Back to sign in</a></p>{% endblock %}

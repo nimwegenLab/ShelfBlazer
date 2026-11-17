@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block title %}Entries of {{ person.name }}{% endblock %}
+{% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <a href="/admin/types">Types</a></p>
+<h1>Entries of {{ person.name }} <span class="muted count">{{ total }}</span></h1>
+{% if not sections %}<p class="muted">{{ person.name }} has not created any entries.</p>{% endif %}
+{% for sec in sections %}<section class="userentries" data-hue="{{ type_hue(sec.slug) }}">
+<h2><a class="typechip" href="/t/{{ sec.slug }}?owner={{ person.uid }}&archived=1">{{ icon(sec.slug) }}{{ sec.name }}s</a> <span class="muted count">{{ sec.total }}</span></h2>
+<div class="tablewrap"><table><thead><tr><th>ID</th><th>Name</th><th>Created</th><th></th></tr></thead><tbody>
+{% for r in sec.shown %}<tr data-href="/r/{{ r.id }}"{% if r.archived %} class="archived"{% endif %}><td><a class="rid" href="/r/{{ r.id }}">{{ r.id }}</a></td><td>{{ r.name or '(no name)' }}</td><td class="muted">{{ (r.created_at or '')[:10] }}</td><td>{% if r.archived %}<span class="badge">archived</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+{% if sec.total > sec.shown|length %}<p class="muted small">The first {{ sec.shown|length }} of {{ sec.total }}. <a href="/t/{{ sec.slug }}?owner={{ person.uid }}&archived=1">Show all {{ sec.total }} in the list</a>.</p>{% endif %}</section>{% endfor %}{% endblock %}

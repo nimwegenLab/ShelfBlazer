@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Live data and secrets: records have their own git repo in var/data,
+# var/instance holds password hashes and the session key
+var/
+
+# Database dumps and archives
+*.sql
+*.zip
+
+# Generated deploy archives (compose.yaml and build-export.sh stay tracked)
+deploy/out/
+*.tar.gz
+
+# Personal and system files
+.claude/settings.local.json
+.DS_Store
