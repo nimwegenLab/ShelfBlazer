@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block mainattr %} data-hue="{{ type_hue(slug) }}"{% endblock %}{% block title %}Import {{ schema.name|lower }}s{% endblock %}
+{% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <a href="/admin/types">Types</a> · <a href="/admin/types/{{ slug }}">{{ schema.name }}</a></p>
+<div class="hero"><div><span class="typechip">{{ icon(slug) }}{{ schema.name }}s</span><h1>Import records</h1></div></div>
+<form method="post" action="/admin/types/{{ slug }}/import" enctype="multipart/form-data" class="edit"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+<label>File (CSV, TSV or semicolon-separated; the first line holds the column titles)<input type="file" name="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" required></label>
+<div class="actions"><button class="primary">Upload and choose the columns</button> <a class="btn" href="/admin/types/{{ slug }}">Cancel</a></div></form>
+<h2>How it works</h2>
+<ul>
+<li>A row with an <strong>ID</strong> updates that record; a row without one creates a new record owned by you. An export file has an ID column, so you can export, edit in a spreadsheet and import again.</li>
+<li>A <strong>blank cell leaves the field as it is</strong>, so a partly filled column never wipes data. To clear a field, edit the record.</li>
+<li>Next you choose what each column is (titles that match a field are chosen for you), then see every row checked with the same rules as the record form. If one row has a problem, nothing is imported: fix the file and upload it again.</li>
+<li>Several options or links in one cell are separated by commas or semicolons; yes/no fields take yes or no; dates are YYYY-MM-DD.</li>
+<li>Everything goes in as <strong>one commit</strong> that you can undo right afterwards.</li>
+<li>At most {{ max_rows }} rows and {{ max_kb }} kB per file. Excel files must be saved as CSV or TSV first.</li></ul>{% endblock %}

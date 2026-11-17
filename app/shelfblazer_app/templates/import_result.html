@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% block mainattr %} data-hue="{{ type_hue(slug) }}"{% endblock %}{% block title %}Import done{% endblock %}
+{% block body %}<div class="hero"><div><span class="typechip">{{ icon(slug) }}{{ schema.name }}s</span><h1>Import done</h1></div></div>
+<p class="lead"><strong>{{ created }}</strong> new · <strong>{{ updated }}</strong> updated</p>
+<div class="callout">Saved as one git commit (<code>{{ sha[:8] }}</code>).
+<form method="post" action="/bulk/undo" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="sha" value="{{ sha }}"><input type="hidden" name="back" value="/t/{{ slug }}"><button>Undo this import</button></form></div>
+<h2>Records</h2><p>{% for i in shown_ids %}<a class="rid" href="/r/{{ i }}">{{ i }}</a> {% endfor %}{% if total_ids > shown_ids|length %}<span class="muted">… and {{ total_ids - shown_ids|length }} more</span>{% endif %}</p>
+<p><a class="btn" href="/t/{{ slug }}">Open the list</a> <a class="btn" href="/admin/types/{{ slug }}">Back to the type</a></p>{% endblock %}

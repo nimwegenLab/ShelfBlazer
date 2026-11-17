@@ -56,6 +56,8 @@ body{display:grid;grid-template-columns:200px minmax(0,1fr);min-height:100vh}
 header.side{position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:12px 8px;background:var(--bg);border-right:1px solid var(--line);z-index:20}
 .side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 8px}
 .brand{font-weight:600;font-size:14px;text-decoration:none;color:var(--fg)}
+.ver{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}.side-head .menu-toggle{margin-left:8px}
+.crumb{display:inline-block;margin-bottom:2px;font-size:12px;color:var(--muted);text-decoration:none}.crumb:hover,.crumb:focus-visible{color:var(--c-ink,var(--fg));text-decoration:underline}
 .menu-toggle{display:none;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border:1px solid var(--line-strong);border-radius:4px;background:var(--card);color:var(--fg);cursor:pointer}
 .side-body{display:flex;flex-direction:column;gap:12px;flex:1}
 nav{display:flex;flex-direction:column;gap:1px}
@@ -210,3 +212,5 @@ details.fold{border-top:1px solid var(--line);padding-top:8px}details.fold>summa
 td.rule{white-space:nowrap;color:var(--muted)}td.rule.changed{color:var(--fg);font-weight:600}
 .mm{width:4.5em}
 .fzs{position:absolute;right:8px;top:0;bottom:0;display:flex;align-items:center;gap:12px}.fzs .fz{position:static}.searchbox.wide input[type=search]{padding-right:150px}.off{opacity:.45}
+/* record import (admin): problem rows */
+tr.importerr td{background:var(--warn)}.importmsg{color:var(--warnfg)}.importmap select{max-width:24rem}

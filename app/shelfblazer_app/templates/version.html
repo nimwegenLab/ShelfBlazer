@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_record.html" import kv, blocks with context %}{% block title %}{{ rec.id }} as of {{ when[:10] }}{% endblock %}
 {% block mainattr %} data-hue="{{ type_hue(rec.type) }}"{% endblock %}
-{% block body %}<div class="hero rec"><div><a class="typechip" href="/t/{{ rec.type }}">{{ icon(rec.type) }}{{ schema.name }}s</a><h1><span class="idtag">{{ rec.id }}</span> {{ rec.name or '(no name)' }}{% if rec.archived %} <span class="badge">archived</span>{% endif %}</h1></div></div>
+{% block body %}<div class="hero rec"><div><a class="crumb" href="/t/{{ rec.type }}">‹ {{ schema.name }}s</a><h1><span class="idtag">{{ rec.id }}</span> {{ rec.name or '(no name)' }}{% if rec.archived %} <span class="badge">archived</span>{% endif %}</h1></div></div>
 <div class="callout"><strong>This is an earlier version of <a href="/r/{{ rec.id }}">{{ rec.id }}</a></strong> (read-only; <a href="/r/{{ rec.id }}">back to the current record</a>).<br>Saved on {{ when }} by {{ author }} (<code>{{ sha[:7] }}</code>):<blockquote>{{ subject|mono_ids }}</blockquote></div>
 {{ kv(rows) }}
 {% if rec.notes %}<h2>Notes</h2><div class="notes">{{ md(rec.notes)|safe }}</div>{% endif %}

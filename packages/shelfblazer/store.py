@@ -919,6 +919,52 @@ class Store:
             flag = action == "archive"
             return None if bool(rec["archived"]) == flag else dict(rec, archived=flag, updated_at=now_iso())
 
+    def import_table(self, actor, type_slug, header, rows, mapping, dry_run=False):
+        """Import records from a parsed CSV/TSV file (see tableimport) into one type, for administrators, as ONE git commit that
+        ``undo`` can revert. Every row is checked first, under the write lock; if any row has an error nothing is written.
+        Returns the plan (tableimport.plan) plus ``sha`` (the commit, or None when nothing was written) and ``written`` (the IDs)."""
+        from . import tableimport
+        if type_slug not in self.schemas:
+            raise NotFound(type_slug)
+        if not perms.is_admin(actor):
+            raise Forbidden("only administrators may import records")
+        with (contextlib.nullcontext() if dry_run else self._write_lock()):
+            result = tableimport.plan(self, actor, type_slug, header, rows, mapping)
+            result.update(sha=None, written=[])
+            todo = [e for e in result["entries"] if e["action"] in ("create", "update")]
+            if dry_run or result["errors"] or not todo:
+                return result
+            t, order, paths, staged = now_iso(), self.order_of(type_slug), [], []
+            for e in todo:
+                if e["action"] == "create":
+                    n = self._next_number(type_slug)
+                    rid = f"{self.schemas[type_slug]['prefix']}-{n}"
+                    rec = dict(id=rid, type=type_slug, name=unix_newlines(e["name"]).strip(), created_by=actor["uid"], created_at=t,
+                               updated_at=t, archived=False, legacy_id=n, fields=e["fields"], notes=unix_newlines(e["notes"]).strip())
+                else:
+                    rid = e["rid"]
+                    rec = dict(self.records[rid], name=unix_newlines(e["name"]).strip(), fields=e["fields"],
+                               notes=unix_newlines(e["notes"]).strip(), updated_at=t)
+                e["rid"] = rid
+                path = self.path_of(rid, type_slug)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                text = serialize_record(rec, order)
+                write_text(path, text)
+                rec["_version"] = version_of(text)
+                paths.append(path)
+                staged.append((rid, rec))
+            if result["created"]:
+                paths.append(self._counters_path())
+            self.commit(paths, f"bulk: import {result['created']} new, {result['updated']} updated ({len(staged)} {type_slug} records)", actor,
+                        body="Records: " + ", ".join(r for r, _ in staged))
+            result["sha"] = self.git("rev-parse", "HEAD").strip()
+            result["written"] = [r for r, _ in staged]
+            for rid, rec in staged:
+                self.records[rid] = rec
+        for rid, _ in staged:
+            self._notify(rid)
+        return result
+
     def undo(self, actor, sha):
         """Revert a bulk commit (one git revert). Allowed for the person who made it and for admins; refused if later changes
         touch the same records (nothing is changed then) or if it was already undone."""

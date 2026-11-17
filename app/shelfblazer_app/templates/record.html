@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_record.html" import kv, blocks with context %}{% block title %}{{ rec.id }}{% endblock %}
 {% block mainattr %} data-hue="{{ type_hue(rec.type) }}"{% endblock %}
-{% block body %}<div class="hero rec"><div><a class="typechip" href="/t/{{ rec.type }}">{{ icon(rec.type) }}{{ schema.name }}s</a><h1><span class="idtag">{{ rec.id }}</span> {{ rec.name or '(no name)' }}{% if rec.archived %} <span class="badge">archived</span>{% endif %}</h1></div>
+{% block body %}<div class="hero rec"><div><a class="crumb" href="/t/{{ rec.type }}">‹ {{ schema.name }}s</a><h1><span class="idtag">{{ rec.id }}</span> {{ rec.name or '(no name)' }}{% if rec.archived %} <span class="badge">archived</span>{% endif %}</h1></div>
 {% if can_edit(rec) %}<div class="actions"><a class="btn" href="/r/{{ rec.id }}/edit">Edit</a>
 <form method="post" action="/r/{{ rec.id }}/archive" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button>{{ 'Restore' if rec.archived else 'Archive' }}</button></form></div>{% endif %}</div>
 {% if rec.archived %}<p class="callout">Archived: hidden from everybody except its owner and administrators. {% if can_edit(rec) %}Restore it to bring it back.{% endif %}</p>{% endif %}

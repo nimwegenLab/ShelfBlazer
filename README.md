@@ -11,6 +11,7 @@ Design: [docs/design.md](docs/design.md). Changes: [CHANGELOG.md](CHANGELOG.md).
 - **Forms:** reference picker for links, Save and add another, new choice options and storage places typed in place (saved with the record, in the same commit, only if the record is valid).
 - **Archive, never delete.** An archived record is visible only to its owner and administrators. Git keeps every version.
 - **Bulk edit** (one commit, with Undo) and **export** to a tab-separated file, from the list's *Select* mode.
+- **Import from CSV/TSV** (administrators, from the type page: *Import records from a file…*). Upload a file with a header line, say what each column is (titles that match a field are chosen for you), see every row checked with the form's rules, then import it as one commit with Undo. A row with an ID updates that record, a row without one creates a new record; a blank cell leaves the field as it is; one bad row stops the whole import. Up to 5,000 rows and 1 MB per file; Excel files are saved as CSV or TSV first. Person fields take a user name or ID.
 - **Home:** the types as tiles and recent activity, read from the git history.
 - **Types page** (administrators): create types, add and change fields, options, list columns, colour, icon, permissions, menu order. Each change is one commit.
 - **Users page** (administrators): accounts, roles, set-password links, each person's entries, the sign-up passphrase.
@@ -50,6 +51,7 @@ The runtime home (`./home` above, `/srv/shelfblazer` inside the container, or `v
 - `instance/`: `users.json` (accounts) and `secret.key` (session signing). It holds secrets: back it up separately and encrypted, never into git.
 
 Choose the home with `--home DIR` or `$SHELFBLAZER_HOME` (the container sets it); `--data` and `--instance` override single folders.
+To push `data/` to a backup remote after every change, with a guard for the remote's LFS quota, see Backing up the data repository in [deploy/README.md](deploy/README.md).
 
 **Attached files are stored with Git LFS:** the history holds small pointers, and records, type definitions and counters stay plain text (files are under `data/files/<ID>/`).
 Everything that touches the repository needs `git-lfs` (the server, the image, a backup host); the server refuses to start without it.
@@ -149,7 +151,7 @@ python3 -m venv .venv
 | Path | What it is |
 |---|---|
 | `packages/shelfblazer/` | **Core package** (no web code). `store.py` (records, type definitions, counters, git commits under a file lock), `recordfile.py` (the file format), `fields.py` (what each field setting does, value checks), `perms.py` (permission rules), `schema_edit.py` (editing type definitions), `formula.py` (calculated fields), `auth.py` (accounts), `search.py`, `seqsearch.py`, `export.py`, `uploads.py`, `markdown.py`, `builtin.py` (default icons and colours for common lab item types) |
-| `app/shelfblazer_app/` | **Web app**. `web.py` (lists, records, forms, search), `accounts.py` (sign-in, sign-up, your account), `users_admin.py`, `types_admin.py`, `bulk.py`, `export.py`, `files.py`, `cli.py` (the `shelfblazer` command), `templates/`, `static/` |
+| `app/shelfblazer_app/` | **Web app**. `web.py` (lists, records, forms, search), `accounts.py` (sign-in, sign-up, your account), `users_admin.py`, `types_admin.py`, `bulk.py`, `records_import.py`, `export.py`, `files.py`, `cli.py` (the `shelfblazer` command), `templates/`, `static/` |
 | `packages/tests/`, `app/tests/` | Core unit tests; app tests (HTTP and command line) |
 | `deploy/`, `Dockerfile` | Container image and compose files; see [deploy/README.md](deploy/README.md) |
 | `var/` | The runtime home when running from source (git-ignored) |

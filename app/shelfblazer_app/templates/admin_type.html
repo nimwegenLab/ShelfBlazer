@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block mainattr %} data-hue="{{ type_hue(slug) }}"{% endblock %}{% block title %}Type {{ schema.name }}{% endblock %}
 {% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <a href="/admin/types">Types</a> · <strong>{{ schema.name }}</strong></p><div class="hero"><div><span class="typechip">{{ icon(slug) }}{{ schema.name }}</span><h1>Type: {{ schema.name }}</h1></div><div class="actions"><a class="btn" href="/t/{{ slug }}">Open the list</a> <a class="btn" href="/admin/types">All types</a></div></div>
 <p class="muted">ID prefix <code class="rid">{{ schema.prefix }}</code> (fixed) · {{ n }} record{{ '' if n == 1 else 's' }} · stored in <code>config/types/{{ slug }}.yaml</code></p>
+<p><a class="btn" href="/admin/types/{{ slug }}/import">Import records from a file…</a></p>
 {% if warnings %}<div class="flash err">{% for w in warnings %}{{ w }}<br>{% endfor %}</div>{% endif %}
 
 <h2>Settings</h2>

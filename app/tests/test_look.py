@@ -259,7 +259,15 @@ class TestTypeColours(Base):
         for path in ("/t/strain", "/t/strain?view=cards", "/r/ST-1", "/t/strain/new"):
             self.assertIn('<main data-hue="1">', c.get(path).text, path)
         self.assertIn('<main data-hue="2">', c.get("/t/plasmid").text)
-        self.assertIn('class="typechip"', c.get("/r/ST-1").text)
+        page = c.get("/r/ST-1").text
+        self.assertIn('<a class="crumb" href="/t/strain">‹ Strains</a>', page)                    # a quiet way back to the list, not a pill
+        self.assertNotIn('class="typechip"', page[page.index("<main"):page.index("</h1>")])
+
+    def test_version_sits_right_of_the_name_in_the_sidebar_header(self):
+        head = re.search(r'<div class="side-head">.*?</div>', self.client("alice").get("/").text, re.S).group(0)
+        self.assertRegex(head, r'<a class="brand" href="/">ShelfBlazer</a><span class="ver" title="ShelfBlazer version [^"]+">v\S+</span><button')
+        self.assertNotIn("muted small ver", self.client("alice").get("/").text)               # no longer at the foot of the bar
+        self.assertNotIn('class="ver"', self.client().get("/login").text)                      # not shown to people who are not signed in
 
     def test_colour_in_the_type_definition_overrides_the_default(self):
         self.create("alice", name="s1")

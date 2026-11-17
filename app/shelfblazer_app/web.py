@@ -735,7 +735,7 @@ def create_app(data_dir, instance_dir, https_only=False):
             out = [item(r) for r in recs[:limit]]
         return {"results": out}
 
-    from . import accounts, bulk, export, files as files_routes, types_admin, users_admin
+    from . import accounts, bulk, export, files as files_routes, records_import, types_admin, users_admin
     ctx = SimpleNamespace(store=store, users=users, index=index, render=render, need_user=need_user, need_admin=need_admin, user_of=user_of,
                           check_csrf=check_csrf, flash=flash, display=display, list_records=list_records, off_loop=off_loop,
                           form_descriptors=form_descriptors, type_hue=type_hue, safe_next=safe_next, https_only=https_only)
@@ -743,6 +743,7 @@ def create_app(data_dir, instance_dir, https_only=False):
     users_admin.register(app, ctx)
     bulk.register(app, ctx)
     export.register(app, ctx)
+    records_import.register(app, ctx)
     files_routes.register(app, ctx)
     types_admin.register(app, ctx)
     return app
