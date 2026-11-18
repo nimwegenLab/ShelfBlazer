@@ -204,6 +204,19 @@ class Scan(Base):
         self.assertNotIn('id="scan-open"', self.c.get("/").text)
         self.assertIn('id="scan-open"', self.client("root").get("/").text)
 
+    def test_the_header_has_a_scan_button_on_every_page_when_a_type_is_set_up_for_it(self):
+        self.assertIn('class="headscan" href="/?scan=1"', self.c.get("/t/strain").text)
+        self.store.save_schema("consumable", schema(permissions={"read": "admin"}), self.root)
+        self.assertNotIn('class="headscan"', self.c.get("/t/strain").text)
+
+    def test_the_scan_fields_of_a_form_have_a_scan_button_that_fills_them(self):
+        form = self.c.get("/t/consumable/new").text
+        self.assertIn('data-scan-into="f_barcodes"', form)
+        self.assertIn('data-scan-into="f_catalog_no"', form)
+        self.assertNotIn('data-scan-into="f_supplier"', form)
+        self.assertIn('id="scan"', form)
+        self.assertNotIn("data-scan-into", self.c.get("/t/strain/new").text)
+
     def test_the_page_may_run_webassembly_for_the_decoder_and_nothing_else_new(self):
         csp = self.c.get("/").headers["content-security-policy"]
         self.assertIn("script-src 'self' 'wasm-unsafe-eval';", csp)

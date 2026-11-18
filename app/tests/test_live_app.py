@@ -123,7 +123,7 @@ class TestLive(Base):
         self.assertNotIn('type="file"', self.c.get("/t/strain/new").text)
         self.assertNotIn("can be attached on the record page", self.c.get("/t/strain/new").text)
         pid = self.create("alice", "plasmid", name="p")
-        self.assertIn('<h2 id="files-attachments">Files</h2>', self.c.get(f"/r/{pid}").text)           # the imported Files field of plasmids
+        self.assertNotIn('<h2 id="files-attachments">', self.c.get(f"/r/{pid}").text)                # an empty file field is not shown on the record page
         self.assertIn('type="file" name="f_attachments"', self.c.get("/t/plasmid/new").text)
 
     def test_small_text_in_forms_matches_the_compact_scale(self):

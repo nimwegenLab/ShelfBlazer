@@ -56,7 +56,7 @@ body{display:grid;grid-template-columns:200px minmax(0,1fr);min-height:100vh}
 header.side{position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:12px 8px;background:var(--bg);border-right:1px solid var(--line);z-index:20}
 .side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 8px}
 .brand{font-weight:600;font-size:16px;text-decoration:none;color:var(--fg)}
-.ver{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}.side-head .menu-toggle{margin-left:8px}
+.ver{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}.side-head .menu-toggle{margin-left:8px}.side-head .headscan{margin-left:auto}
 .crumb{display:inline-block;margin-bottom:2px;font-size:12px;color:var(--muted);text-decoration:none}.crumb:hover,.crumb:focus-visible{color:var(--c-ink,var(--fg));text-decoration:underline}
 .menu-toggle{display:none;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border:1px solid var(--line-strong);border-radius:4px;background:var(--card);color:var(--fg);cursor:pointer}
 .side-body{display:flex;flex-direction:column;gap:12px;flex:1}
@@ -218,12 +218,19 @@ tr.importerr td{background:var(--warn)}.importmsg{color:var(--warnfg)}.importmap
 /* barcode scanning: the Scan button next to Search (shown by scan.js when the camera can be used) and the camera dialog */
 .scan-open{display:none}.scan-open.on{display:inline-flex}
 dialog.scan{width:min(92vw,520px);padding:12px;border:1px solid var(--line-strong);border-radius:6px;background:var(--card);color:var(--fg)}
-dialog.scan::backdrop{background:rgba(0,0,0,.45)}
+dialog.scan::backdrop{background:rgba(0,0,0,.45)}dialog.scan video[hidden],.scan-pick[hidden]{display:none}.scan-msg:empty{display:none}
+.scan-pick p{margin:0 0 8px}.scan-pick ul{list-style:none;margin:0 0 8px;padding:0}.scan-pick li{padding:6px 0;border-bottom:1px solid var(--line)}.scan-pick label.chk{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:13px}.scan-pick code{font-family:var(--mono);font-size:13px}
 dialog.scan video{display:block;width:100%;max-height:60vh;object-fit:cover;border-radius:4px;background:var(--hover)}
 .scan-msg{margin:8px 0;min-height:36px}.codes code{margin-right:6px}
 /* record picture (a type's "thumbnail" file field): large on the record page, a cover on the cards */
-.pic{display:block;max-width:100%;max-height:360px;margin:0 0 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);object-fit:contain}
-.rpic{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:4px;background:var(--hover)}
+.recmain.haspic{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start}.recmain.haspic .pic{order:2}
+.pic{display:block;max-width:min(280px,100%);max-height:280px;border:1px solid var(--line);border-radius:6px;background:var(--card);object-fit:contain}
+/* record cards: select fields as chips beside the ID (no label), one line per other field, the picture as the borderless right third */
+.rcard{gap:2px}.rhead{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}.rhead .chips{display:inline-flex;gap:4px}
+.rcard .meta{display:flex;align-items:baseline;gap:6px;min-width:0;font-size:13px;line-height:18px}.rcard .meta .metalabel{flex:none}.rcard .meta .clamp{-webkit-line-clamp:1;max-width:none}
+.rcard:has(.rpic){padding-right:calc(33% + 10px);min-height:96px}
+.rpic{pointer-events:none;position:absolute;top:0;right:0;bottom:0;width:33%;height:100%;object-fit:cover;border-radius:0 5px 5px 0;background:var(--hover)}
+.scanfield{display:flex;gap:6px;align-items:stretch}.scanfield input{flex:1;min-width:0}.scan-into{display:none}.scan-into.on{display:inline-flex;align-items:center;gap:7px;flex:none;padding:0 14px 0 12px;border:0;border-radius:6px;background:var(--hover);color:var(--fg);font-size:13px;font-weight:500;cursor:pointer}.scan-into.on:hover,.scan-into.on:focus-visible{background:color-mix(in srgb,var(--hover) 80%,var(--fg))}
 
 /* ---- Home (scoped to .home): big live search, tiles capped at four columns with a New button, the last events as a timeline */
 .home .homesearch{flex-wrap:nowrap;gap:16px}
@@ -235,7 +242,7 @@ dialog.scan video{display:block;width:100%;max-height:60vh;object-fit:cover;bord
 .home h2.sec .hint{font-size:12px;font-weight:400;color:var(--muted)}
 .home .cards{grid-template-columns:repeat(auto-fill,minmax(max(150px,calc((100% - 24px) / 4)),1fr));gap:8px}
 .home .card{position:relative;padding:8px 10px;gap:2px}
-.home .card:hover,:root[data-look="classic"] .home .card:hover,.home .card:focus-within{border-color:var(--line-strong);outline:1px solid var(--line-strong);outline-offset:-1px}   /* hover: a 2px grey edge (border + outline, so nothing moves), not the type colour */
+.home .card:focus-within{border-color:var(--c,var(--line-strong))}   /* hover: the type-colour edge of .card:hover (a grey edge does not show on the Day tiles) */
 .home .card .tiletop{display:flex;align-items:center;justify-content:space-between;height:20px}
 .home .card .tiletop .ico{width:15px;height:15px;margin:0;color:var(--t-ico)}
 .home .card .l{order:0;font-size:13px;line-height:18px;font-weight:600;color:var(--t-name);text-decoration:none}
@@ -244,8 +251,11 @@ dialog.scan video{display:block;width:100%;max-height:60vh;object-fit:cover;bord
 .home .card .n{order:0}.home .card .arch{font-size:12px;line-height:16px;color:var(--muted);white-space:nowrap}
 .tilenew{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;margin:-6px -10px -6px 0;text-decoration:none}
 .tilenew .nb{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:1.5px solid var(--line-strong);border-radius:4px;color:var(--muted);box-sizing:border-box}
-.home .card .tilenew .nb .ico{display:block;width:11px;height:11px;margin:0;color:var(--muted)}    /* the + is grey and takes the type colour on hover or focus; the border stays grey */
-.home .card .tilenew:hover .nb .ico,.home .card .tilenew:focus-visible .nb .ico{color:var(--t-ico)}
+.home .card .tilenew .nb .ico{display:block;width:11px;height:11px;margin:0;color:var(--muted)}    /* the + and its border are grey and take the type colour on hover or focus */
+.home .card .tilenew:hover .nb .ico,.home .card .tilenew:focus-visible .nb .ico{color:var(--t-ico)}.home .card .tilenew:hover .nb,.home .card .tilenew:focus-visible .nb{border-color:var(--t-ico)}
+/* Night keeps the grey hover edge (2px: border + outline, so nothing moves) and the grey + border; the type colour on hover is for Day */
+:root[data-appearance="night"] .home .card:is(:hover,:focus-within){border-color:var(--line-strong);outline:1px solid var(--line-strong);outline-offset:-1px}:root[data-appearance="night"] .home .card .tilenew:is(:hover,:focus-visible) .nb{border-color:var(--line-strong)}
+@media (prefers-color-scheme:dark){:root:not([data-appearance="day"]) .home .card:is(:hover,:focus-within){border-color:var(--line-strong);outline:1px solid var(--line-strong);outline-offset:-1px}:root:not([data-appearance="day"]) .home .card .tilenew:is(:hover,:focus-visible) .nb{border-color:var(--line-strong)}}
 ul.timeline{list-style:none;margin:0;padding:0 0 0 20px;position:relative}
 ul.timeline::before{content:"";position:absolute;left:4px;top:0;bottom:0;width:2px;background:var(--line)}
 ul.timeline li.day{position:relative;display:flex;align-items:center;height:20px;font-size:12px;line-height:16px;font-weight:600;color:var(--muted)}
@@ -258,12 +268,12 @@ ul.timeline .name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-ove
 ul.timeline .vprefix{display:none}
 ul.timeline .ago{flex:none;margin-left:auto;color:var(--muted);white-space:nowrap}
 
-/* ---- Scan: a row in the desktop sidebar, a button under the phone Home search, the first item of the phone menu */
+/* ---- Scan: a row in the desktop sidebar, an icon button next to the menu button on phones */
 .navscan .ico{width:15px;height:15px;margin:0 -3.5px;color:var(--muted)}
-.menuscan{display:none}
-.home .scan-open.on{display:none}                                                 /* desktop: Scan lives in the sidebar */
-.home .scan-open .ico,.menuscan .ico{width:15px;height:15px;color:var(--muted)}
-.signout-text,.ver-foot{display:none}
+.headscan{display:none}
+.home .scan-open.on{display:none}                                                 /* Scan lives in the sidebar, or the header on phones */
+.headscan .ico,.scan-into .ico{width:16px;height:16px;color:var(--muted)}
+.ver-foot{display:none}
 .menu-toggle .i-close{display:none}.menu-toggle[aria-expanded="true"] .i-bars{display:none}.menu-toggle[aria-expanded="true"] .i-close{display:inline-block}
 
 @media (max-width:900px){
@@ -271,13 +281,14 @@ ul.timeline .ago{flex:none;margin-left:auto;color:var(--muted);white-space:nowra
   .side-head{height:52px;padding:0 12px}
   .ver{display:none}
   .menu-toggle{width:36px;height:36px;justify-content:center;padding:0}
+  .headscan{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px 0 12px;border-radius:6px;background:var(--hover);color:var(--fg);font-size:13px;line-height:18px;font-weight:500;text-decoration:none}
+  .headscan:hover,.headscan:focus-visible{background:color-mix(in srgb,var(--hover) 80%,var(--fg))}
   .navscan{display:none!important}
   /* the opened menu is a full-screen layer with its own top bar (the header's head) and a scrolling body */
   header.side.open{position:fixed;inset:0;height:100vh;height:100dvh;max-height:none;z-index:100;display:flex;flex-direction:column;background:var(--bg);border-bottom:0}
   header.side.open .side-head{flex:none;border-bottom:1px solid var(--line)}
   header.side.open .side-body{flex:1;overflow-y:auto;padding:8px 12px;gap:0}
   body.menu-open{overflow:hidden}
-  .menuscan{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;width:180px;height:44px;margin:4px auto 8px;background:var(--hover);border-radius:6px;font-size:13px;line-height:18px;font-weight:500;color:var(--fg);text-decoration:none}
   nav{gap:0;flex:none}
   .side-foot{flex:none}
   nav a{min-height:48px;padding:0 4px;border-radius:0;border-bottom:1px solid var(--line);font-size:15px;line-height:20px;gap:10px}
@@ -285,17 +296,16 @@ ul.timeline .ago{flex:none;margin-left:auto;color:var(--muted);white-space:nowra
   nav a.admin{margin-top:0}nav a.admin::after{display:none}
   .side-foot{border-top:0;padding-top:4px}
   .whorow{min-height:52px}
-  .signout{width:auto;height:36px;padding:0 12px;border:1px solid var(--line-strong);color:var(--fg)}
-  .signout .ico{display:none}.signout-text{display:inline}
+  .signout{width:36px;height:36px}.signout .ico{width:18px;height:18px}
   .ver-foot{display:block;margin:12px 4px;font-size:12px;line-height:16px;color:var(--muted)}
 }
 @media (max-width:640px){
+  .recmain.haspic{display:block}.recmain.haspic .pic{margin-bottom:12px;max-height:220px}
   .home .homesearch{flex-wrap:wrap;gap:8px}
   .home .homesearch .searchbox{flex:1 1 100%}
   .home .homesearch .searchbox input[type=search]{min-height:44px;height:44px;font-size:14px}
   .searchopts{flex:1 1 100%;justify-content:space-between}
   .searchopts .archivedopt{margin-left:auto}
-  .home .scan-open.on{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:132px;height:40px;padding:0;border:0;border-radius:6px;background:var(--hover);font-size:13px;line-height:18px;font-weight:500;color:var(--fg)}
   .home .cards{grid-template-columns:repeat(2,1fr)}
   .home .card .tiletop{height:24px}
   .tilenew{margin:-4px -8px -4px 0}

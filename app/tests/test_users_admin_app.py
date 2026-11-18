@@ -132,11 +132,11 @@ class TestResetLink(Base):
 
 
 class TestSidebar(Base):
-    def test_sign_out_is_an_icon_next_to_the_name_and_text_on_phones(self):
+    def test_sign_out_is_an_icon_next_to_the_name_also_on_phones(self):
         page = self.client("alice").get("/").text
         self.assertRegex(page, r'<div class="whorow"><a href="/me" class="who".*?</a>\s*<form method="post" action="/logout".*?title="Sign out" aria-label="Sign out">'
                          r'<svg class="ico".*?#right-from-bracket')
-        self.assertTrue(tags(page, "span", class_="signout-text", _text="Sign out"))              # shown instead of the icon in the phone menu
+        self.assertFalse(tags(page, "span", class_="signout-text"))                              # the phone menu uses the same icon
 
 
 if __name__ == "__main__":

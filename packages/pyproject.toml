@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shelfblazer"
-version = "0.2.0"
+version = "0.2.1"
 description = "ShelfBlazer core: git-backed record store, permissions, accounts, search (no web code)"
 requires-python = ">=3.10"
 dependencies = ["rapidfuzz>=3.9"]

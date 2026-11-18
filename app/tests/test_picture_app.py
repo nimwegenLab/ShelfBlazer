@@ -55,7 +55,7 @@ class Picture(Base):
         form = self.c.get("/t/consumable/new").text
         self.assertRegex(form, r'<input type="file" name="f_photo" data-photo accept="image/\*">')
         self.assertRegex(form, r'<input type="file" name="f_other" multiple>')
-        self.assertIn('data-photo accept="image/*" aria-label', self.c.get(f"/r/{self.rid}").text)
+        self.assertIn('name="f_photo" data-photo accept="image/*"', self.c.get(f"/r/{self.rid}/edit").text)    # pictures are added on the edit page
         self.assertIn("/static/photo.js", self.c.get("/").text)
         self.assertEqual(self.c.get("/static/photo.js").status_code, 200)
 

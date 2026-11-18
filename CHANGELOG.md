@@ -7,6 +7,21 @@ A change to the record or type-definition format in `data/` always gets an **Upg
 To release: set the same version in `app/pyproject.toml` and `packages/pyproject.toml`, add a section below, commit, then tag `vMAJOR.MINOR.PATCH`.
 (Reinstall with `pip install -e packages -e app` afterwards so the version shown in the app follows.)
 
+## [0.2.1] - 2026-11-18
+
+### Added
+- Edit form: a Scan button beside each of a type's scan fields adds the codes the camera reads to that field. GS1 codes are cut to their product part (no lot or expiry); when a label carries several codes, they are listed with what each one is and the product codes ticked.
+
+### Changed
+- Phones: Scan is a button next to the menu button on every page (no longer in the menu or under the Home search); the phone menu signs out with the same icon as the sidebar.
+- Home tiles: in Day the hover edge and the New (+) border take the type colour; Night keeps the grey edge.
+- Cards: select fields show as chips beside the ID without their label, other fields on one line each, and the picture fills the right third of the card. On the record page the picture sits beside the fields (above them on phones).
+- Files are added on the edit page only; the record page lists attached files (with "remove") and hides empty file fields.
+- Sign-in page: the account help is on two lines.
+
+### Upgrading
+- No change to the record or type-definition format.
+
 ## [0.2.0] - 2026-11-18
 
 ### Added

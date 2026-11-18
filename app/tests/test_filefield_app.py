@@ -155,7 +155,7 @@ class TestRecordPageAndRules(FileBase):
         self.assertNotIn("x.txt", json.dumps(self.store.records[self.rid]["fields"]))
         self.assertFalse(self.on_disk(self.rid, "x.txt"))
 
-    def test_only_people_who_may_edit_see_the_upload_form_and_can_use_it(self):
+    def test_only_people_who_may_edit_can_upload(self):
         bob = self.client("bob")
         page = bob.get(f"/r/{self.rid}").text
         self.assertIn(f'<a href="/files/{self.rid}/gel.png">gel.png</a>', page)

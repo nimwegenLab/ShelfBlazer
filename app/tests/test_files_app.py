@@ -20,13 +20,13 @@ class FilesBase(Base):
 
 
 class TestUpload(FilesBase):
-    def test_owner_sees_the_form_others_do_not(self):
+    def test_files_are_added_on_the_edit_page_not_on_the_record_page(self):
         page = self.alice.get(f"/r/{self.rid}").text
-        self.assertIn(f'action="/r/{self.rid}/files" enctype="multipart/form-data"', page)
-        self.assertIn("Up to 25 MB per file", page)
-        self.assertIn("No files attached yet", page)
-        self.assertNotIn("/files", self.bob.get(f"/r/{self.rid}").text.replace("/static/", ""))      # no upload form for someone else
-        self.assertIn('enctype="multipart/form-data"', self.root.get(f"/r/{self.rid}").text)
+        self.assertNotIn(f'action="/r/{self.rid}/files"', page)
+        self.assertNotIn("No files attached yet", page)                         # an empty file field shows nothing on the record page
+        form = self.alice.get(f"/r/{self.rid}/edit").text
+        self.assertIn('enctype="multipart/form-data"', form)
+        self.assertIn("Up to 25 MB per file", form)
 
     def test_upload_download_roundtrip(self):
         r = self.upload(self.alice, self.rid, ("map.gb", b"LOCUS  pUA66", "application/octet-stream"))
