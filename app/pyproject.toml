@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shelfblazer-app"
-version = "0.1.1"
+version = "0.2.0"
 description = "ShelfBlazer web app: FastAPI pages and the shelfblazer command line"
 requires-python = ">=3.10"
 dependencies = ["shelfblazer", "fastapi>=0.110", "uvicorn[standard]>=0.27", "jinja2>=3.1", "python-multipart>=0.0.9", "itsdangerous>=2.1"]
@@ -19,4 +19,4 @@ shelfblazer = "shelfblazer_app.cli:main"
 packages = ["shelfblazer_app"]
 
 [tool.setuptools.package-data]
-shelfblazer_app = ["templates/*.html", "static/*", "static/themes/*", "static/icons.svg", "static/LICENSE-fontawesome.txt"]
+shelfblazer_app = ["templates/*.html", "static/*", "static/themes/*", "static/icons.svg", "static/LICENSE-fontawesome.txt", "static/vendor/zxing/*"]

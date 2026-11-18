@@ -1,7 +1,7 @@
 """Type definitions: pure editing functions, validation, and the store's create / change / remove."""
 import copy, json, os, subprocess, tempfile, unittest
 
-from helpers import purge
+from helpers import ALICE, ROOT, purge
 from shelfblazer import schema_edit as se
 from shelfblazer.search import Index
 from shelfblazer.store import Forbidden, NotFound, Store, ValidationError
@@ -12,8 +12,6 @@ BASE = {"name": "Lipid", "prefix": "LP", "list_columns": ["id", "name", "created
     {"key": "tags", "label": "Tags", "type": "multiselect", "options": ["x", "y"]},
     {"key": "note", "label": "Note", "type": "text"}]}
 OTHERS = {"strain": {"name": "Strain", "prefix": "ST", "list_columns": ["id", "name"], "fields": [{"key": "name", "label": "Name", "type": "text", "required": True}]}}
-ROOT = {"username": "root", "uid": "root", "name": "Root", "role": "admin", "active": True}
-ALICE = {"username": "alice", "uid": "alice", "name": "Alice", "role": "user", "active": True}
 
 
 class TestPureEditing(unittest.TestCase):

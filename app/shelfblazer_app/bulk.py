@@ -7,7 +7,7 @@ from starlette.requests import Request
 
 from shelfblazer.store import BULK_ADMIN_ACTIONS, Conflict, ValidationError
 
-MAX_IDS = 5000                  # the same as web.SHOW_ALL_MAX: every row a list can show can be selected
+MAX_IDS = 5000                  # the same as lists.SHOW_ALL_MAX: every row a list can show can be selected
 
 
 def register(app, c):

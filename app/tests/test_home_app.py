@@ -1,7 +1,7 @@
 """Home page (title, search, recent activity), greyed-out archived records, storage on edit forms, folded fields."""
 import re, unittest
 
-from test_app import Base
+from test_app import Base, tags
 
 
 class TestHome(Base):
@@ -12,7 +12,7 @@ class TestHome(Base):
         page = self.client("alice").get("/").text
         self.assertRegex(page, r'<h1>Home <span class="muted count">2 types \u00b7 3 records</span></h1>')
         self.assertIn('placeholder="Search all records, or type an ID such as ST-2"', page)
-        self.assertIn("<h2>Record types</h2>", page)
+        self.assertTrue(tags(page, "h2", class_="sec", _text=re.compile(r"^Record types\s*2 types$")))
         self.assertNotIn("Stocks", page)
 
     def test_counts_skip_archived_and_hidden_types(self):
@@ -41,10 +41,13 @@ class TestActivity(Base):
         self.post(c, f"/r/{rid}/edit", {"name": "renamed strain", "version": self.version(rid)})
         self.post(c, f"/r/{rid}/archive")
         page = c.get("/").text
-        self.assertIn("<h2>Recent activity</h2>", page)
-        items = re.findall(r'<li data-hue="\d"[^>]*>(.*?)</li>', page, re.S)
-        text = [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", i)).strip() for i in items]
-        self.assertEqual(text, ["archived ST-1 just now", "edited ST-1 just now", "created PL-1 just now", "created ST-1 just now"])
+        self.assertTrue(tags(page, "h2", class_="sec", _text=re.compile(r"^Recent activity\s*last 4 events$")))
+        self.assertEqual([d["_text"].strip() for d in tags(page, "li", class_="day")], ["Today"])          # one day marker
+        items = tags(page, "li", class_="ev")
+        squash = lambda t: re.sub(r"\s+", "", t)                                       # the row's parts are separate elements, laid out by CSS
+        self.assertEqual([squash(i["_text"]) for i in items],
+                         [squash(t) for t in ("archived ST-1 archived renamed strain just now", "edited ST-1 edited renamed strain just now",   # the verb is repeated
+                                              "created PL-1 bobs plasmid just now", "created ST-1 renamed strain just now")])                  # as a phone-only prefix
         self.assertIn('<a class="rid" href="/r/ST-1">ST-1</a>', page)
         self.assertIn('title="Alice A \u00b7 ', page)                               # who and when on hover
         self.assertNotIn('class="avatar"', page.split("Recent activity")[1])           # the design shows no names in the list
@@ -65,7 +68,7 @@ class TestActivity(Base):
         c = self.client("alice")
         for n in range(3):
             self.post(c, f"/r/{rid}/edit", {"name": f"a{n}", "version": self.version(rid)})
-        items = re.findall(r'<li data-hue="\d"', c.get("/").text)
+        items = tags(c.get("/").text, "li", class_="ev")
         self.assertEqual(len(items), 2)                                         # created + one "updated"
 
     def test_deleted_records_have_no_link_and_hidden_types_are_not_shown(self):
@@ -82,7 +85,7 @@ class TestActivity(Base):
         ids = [self.create("alice", name=f"s{i}") for i in range(2)]
         self.post(self.client("alice"), "/t/strain/bulk/apply", {"ids": ids, "action": "archive"})
         page = self.client("alice").get("/").text
-        self.assertRegex(page, r"bulk edit</span> <span class=\"muted\">archive \(2 strain records\)")
+        self.assertTrue(tags(page, "li", class_="ev", _text=re.compile(r"^bulk edit\s*archive \(2 strain records\)")))
 
     def test_no_activity_section_when_search_is_used_or_nothing_happened(self):
         self.assertNotIn("Recent activity", self.client("alice").get("/").text)

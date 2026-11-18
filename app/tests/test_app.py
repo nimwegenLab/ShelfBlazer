@@ -1,5 +1,6 @@
 """Permission, account and integrity tests. Run: .venv/bin/python -m unittest discover -s tests -v"""
 import json, os, re, subprocess, tempfile, unittest
+from html.parser import HTMLParser
 
 from starlette.testclient import TestClient
 
@@ -25,6 +26,66 @@ PLASMID = {"name": "Plasmid", "prefix": "PL", "list_columns": ["id", "name", "cr
 
 def git(repo, *a):
     return subprocess.run(["git", "-C", repo, *a], capture_output=True, text=True, check=True).stdout
+
+
+STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shelfblazer_app", "static")
+
+EMOJI = re.compile("[\u2600-\u27bf\ufe0f\U0001f300-\U0001faff]")         # pages and icons use SVG, never emoji
+
+def read(name):
+    """A file of the app's static folder (CSS, scripts, icons), for tests that check what the browser gets."""
+    with open(os.path.join(STATIC, name), encoding="utf-8") as fh:
+        return fh.read()
+
+
+class _TagFinder(HTMLParser):
+    VOID = {"area", "br", "hr", "img", "input", "link", "meta", "source", "use", "wbr"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.found, self.open = [], []
+
+    def handle_starttag(self, tag, attrs):
+        d = {k: (v or "") for k, v in attrs}
+        d["_tag"], d["_text"] = tag, ""
+        self.found.append(d)
+        if tag not in self.VOID:
+            self.open.append(d)
+
+    def handle_endtag(self, tag):
+        for i in range(len(self.open) - 1, -1, -1):
+            if self.open[i]["_tag"] == tag:
+                del self.open[i:]
+                break
+
+    def handle_data(self, data):
+        for d in self.open:
+            d["_text"] += data
+
+
+def tags(page, tag, **want):
+    """The <tag> elements of a page whose attributes match ``want``, in any order and alongside other attributes. Keys: ``class_``
+    matches one class among several, ``data_hue`` means data-hue (underscores become hyphens), ``_text`` is the element's text
+    (stripped); a compiled regex matches by search. Each result is a dict of the attributes plus ``_text``. Tests use this instead of
+    whole-tag strings, so harmless markup changes (attribute order, an extra class) do not break them."""
+    finder = _TagFinder()
+    finder.feed(page)
+    finder.close()
+    out = []
+    for d in finder.found:
+        if tag and d["_tag"] != tag:
+            continue
+        for k, v in want.items():
+            key = "class" if k == "class_" else k if k == "_text" else k.replace("_", "-")
+            have = d.get(key)
+            if have is None:
+                break
+            have = have.strip() if key == "_text" else have
+            if not (v.search(have) if hasattr(v, "search") else v in have.split() if key == "class" else have == v):
+                break
+        else:
+            out.append(d)
+    return out
 
 
 class Base(unittest.TestCase):

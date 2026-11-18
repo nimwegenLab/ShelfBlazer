@@ -1,14 +1,7 @@
 """Bulk edit through the web pages."""
-import os, re, unittest
+import re, unittest
 
-from test_app import Base
-
-STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shelfblazer_app", "static")
-
-
-def read(name):
-    with open(os.path.join(STATIC, name), encoding="utf-8") as fh:
-        return fh.read()
+from test_app import Base, read
 
 
 class BulkBase(Base):
@@ -108,8 +101,8 @@ class TestPreparePage(BulkBase):
         self.assertIn('data-ref-to="plasmid" data-multiple="0"', page)                    # with the picker
 
     def test_a_list_can_show_every_record_so_the_header_box_selects_them_all(self):
-        from shelfblazer_app import web
-        old, web.PAGE_SIZE = web.PAGE_SIZE, 2
+        from shelfblazer_app import lists
+        old, lists.PAGE_SIZE = lists.PAGE_SIZE, 2
         try:
             page = self.alice.get("/t/strain").text
             self.assertEqual(page.count('class="row-check"'), 2)
@@ -124,18 +117,18 @@ class TestPreparePage(BulkBase):
             self.assertRegex(full, r'class="sort" href="[^"]*&show=all')            # sorting keeps everything on screen
             self.assertEqual(self.alice.get(f"/t/strain?show=all&owner={self.uid('bob')}").text.count('class="row-check"'), 2)
         finally:
-            web.PAGE_SIZE = old
+            lists.PAGE_SIZE = old
 
     def test_show_all_is_not_offered_beyond_the_bulk_limit(self):
-        from shelfblazer_app import web
-        old = (web.SHOW_ALL_MAX, web.PAGE_SIZE)
-        web.SHOW_ALL_MAX, web.PAGE_SIZE = 4, 2
+        from shelfblazer_app import lists
+        old = (lists.SHOW_ALL_MAX, lists.PAGE_SIZE)
+        lists.SHOW_ALL_MAX, lists.PAGE_SIZE = 4, 2
         try:
             page = self.alice.get("/t/strain").text
             self.assertNotIn("show all", page)
             self.assertEqual(self.alice.get("/t/strain?show=all").text.count('class="row-check"'), 2)   # the request is ignored
         finally:
-            web.SHOW_ALL_MAX, web.PAGE_SIZE = old
+            lists.SHOW_ALL_MAX, lists.PAGE_SIZE = old
 
     def test_unknown_ids_are_ignored(self):
         page = self.prepare(self.alice, self.a[:1] + ["ST-999", "../x"]).text

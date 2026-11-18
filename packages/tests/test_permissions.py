@@ -4,10 +4,8 @@ import copy, json, os, subprocess, tempfile, unittest
 from shelfblazer import formula, perms, schema_edit as se
 from shelfblazer.search import Index
 from shelfblazer.store import Forbidden, NotFound, Store, ValidationError
+from helpers import ALICE, BOB, ROOT
 
-ROOT = {"username": "root", "uid": "root", "name": "Root", "role": "admin", "active": True}
-ALICE = {"username": "alice", "uid": "alice", "name": "Alice", "role": "user", "active": True}
-BOB = {"username": "bob", "uid": "bob", "name": "Bob", "role": "user", "active": True}
 GONE = dict(BOB, active=False)
 USERS = {u["username"]: u for u in (ROOT, ALICE, BOB)}
 

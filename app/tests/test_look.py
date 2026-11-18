@@ -1,15 +1,8 @@
-"""The one look ("quiet notebook"): readable palette (WCAG AA), flat and dense, Auto/Day/Night control, sidebar menu, mono IDs."""
+"""The one look ("quiet notebook"): readable palette (WCAG AA), type colours, flat and self-contained CSS, the Auto/Day/Night
+and Spectrum/Classic controls. Page markup is tested in test_menu_markup_app.py and test_list_display_app.py."""
 import os, re, unittest
 
-from test_app import Base  # shared fixture: app + users + git repo in a temp dir
-
-STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shelfblazer_app", "static")
-EMOJI = re.compile("[☀-➿️\U0001f300-\U0001faff]")
-
-
-def read(name):
-    with open(os.path.join(STATIC, name), encoding="utf-8") as fh:
-        return fh.read()
+from test_app import EMOJI, STATIC, Base, read, tags  # shared fixture: app + users + git repo in a temp dir
 
 
 def tokens(block):
@@ -116,7 +109,7 @@ class TestFlatAndSelfContained(unittest.TestCase):
         self.assertIn("--line-strong", css)
         self.assertRegex(css, r"body\{margin:0;[^}]*font:14px/20px")
         self.assertRegex(css, r"grid-template-columns:200px minmax\(0,1fr\)")
-        self.assertRegex(css, r"h1\{font-size:18px;line-height:24px;font-weight:500")
+        self.assertRegex(css, r"h1\{font-size:16px;line-height:22px;font-weight:500")       # never larger than the site name (16px/600)
         self.assertRegex(css, r":focus-visible\{outline:2px solid var\(--link\);outline-offset:2px")
         self.assertNotIn('class="logo"', self.client_page())
 
@@ -218,9 +211,14 @@ class TestLook(Base):
 
     def test_control_marks_the_current_look_and_exists_when_signed_out(self):
         c = self.client("alice")
-        self.assertRegex(c.get("/me").text, r'class="looks".*?<a href="/look\?name=spectrum[^"]*" aria-current="true">Spectrum</a><a href="/look\?name=classic[^"]*">Classic</a>')
+        def current(page):
+            return [a["_text"].strip() for a in tags(page, "a", href=re.compile(r"^/look\?name=")) if a.get("aria-current") == "true"]
+        me = c.get("/me").text
+        self.assertTrue(tags(me, None, class_="looks"))
+        self.assertEqual(current(me), ["Spectrum"])
+        self.assertTrue(tags(me, "a", href=re.compile(r"^/look\?name=classic"), _text="Classic"))
         c.get("/look?name=classic&next=/")
-        self.assertRegex(c.get("/me").text, r'<a href="/look\?name=classic[^"]*" aria-current="true">Classic</a>')
+        self.assertEqual(current(c.get("/me").text), ["Classic"])
         self.assertIn('class="looks"', self.client().get("/login").text)
 
     def test_bad_values_and_redirects_are_safe(self):
@@ -246,12 +244,16 @@ class TestTypeColours(Base):
         self.assertTrue(m, f"no coloured nav link for {href}")
         return int(m.group(1))
 
+    @staticmethod
+    def tile_hue(page, slug):
+        """The colour slot of a type's Home tile (the tile is a div; its main link opens the list)."""
+        return re.search(r'<div class="card" data-hue="(\d+)">(?:(?!<div class="card").)*?<a class="l" href="/t/%s">' % slug, page, re.S).group(1)
+
     def test_default_colours_come_from_the_palette_and_differ_per_type(self):
         page = self.client("alice").get("/").text
         self.assertEqual(self.hue_on(page, "/t/strain"), 1)    # blue
         self.assertEqual(self.hue_on(page, "/t/plasmid"), 2)   # green
-        self.assertIn('class="card" href="/t/strain" data-hue="1"', page)
-        self.assertIn('class="card" href="/t/plasmid" data-hue="2"', page)
+        self.assertEqual((self.tile_hue(page, "strain"), self.tile_hue(page, "plasmid")), ("1", "2"))
 
     def test_type_pages_carry_their_colour(self):
         self.create("alice", name="s1")
@@ -260,12 +262,14 @@ class TestTypeColours(Base):
             self.assertIn('<main data-hue="1">', c.get(path).text, path)
         self.assertIn('<main data-hue="2">', c.get("/t/plasmid").text)
         page = c.get("/r/ST-1").text
-        self.assertIn('<a class="crumb" href="/t/strain">‹ Strains</a>', page)                    # a quiet way back to the list, not a pill
+        self.assertTrue(tags(page, "a", class_="crumb", href="/t/strain", _text="‹ Strains"))      # a quiet way back to the list, not a pill
         self.assertNotIn('class="typechip"', page[page.index("<main"):page.index("</h1>")])
 
     def test_version_sits_right_of_the_name_in_the_sidebar_header(self):
         head = re.search(r'<div class="side-head">.*?</div>', self.client("alice").get("/").text, re.S).group(0)
-        self.assertRegex(head, r'<a class="brand" href="/">ShelfBlazer</a><span class="ver" title="ShelfBlazer version [^"]+">v\S+</span><button')
+        self.assertTrue(tags(head, "span", class_="ver", _text=re.compile(r"^v\S+$")))
+        self.assertLess(head.index('class="brand"'), head.index('class="ver"'))                    # right after the name, before the menu button
+        self.assertLess(head.index('class="ver"'), head.index("menu-toggle"))
         self.assertNotIn("muted small ver", self.client("alice").get("/").text)               # no longer at the foot of the bar
         self.assertNotIn('class="ver"', self.client().get("/login").text)                      # not shown to people who are not signed in
 
@@ -276,7 +280,7 @@ class TestTypeColours(Base):
         page = c.get("/").text
         self.assertEqual(self.hue_on(page, "/t/strain"), 6)
         self.assertEqual(self.hue_on(page, "/t/plasmid"), 2)   # other types unchanged
-        self.assertIn('class="card" href="/t/strain" data-hue="6"', page)
+        self.assertEqual(self.tile_hue(page, "strain"), "6")
         for path in ("/t/strain", "/r/ST-1", "/t/strain/new"):
             self.assertIn('<main data-hue="6">', c.get(path).text, path)
 
@@ -305,347 +309,6 @@ class TestTypeColours(Base):
         self.assertEqual(a, self.hue_on(c.get("/t/strain").text, "/t/lipid"))
         self.store.schemas["lipid"]["color"] = "gold"
         self.assertEqual(self.hue_on(c.get("/").text, "/t/lipid"), 8)
-
-
-class TestMenuAndMarkup(Base):
-    def test_sidebar_menu_markup(self):
-        self.create("alice", name="s1")
-        c = self.client("alice")
-        page = c.get("/t/strain").text
-        self.assertIn('<header class="side">', page)
-        self.assertIn('class="menu-toggle" aria-expanded="false" aria-controls="menu"', page)
-        self.assertGreater(page.index("menu-toggle"), page.index('class="brand"'))      # hamburger sits to the right of the name
-        self.assertIn('id="menu"', page)
-        self.assertRegex(page, r'<a href="/t/strain"[^>]*aria-current="page"')
-        self.assertNotRegex(page, r'<a href="/t/plasmid"[^>]*aria-current')
-        self.assertRegex(c.get("/r/ST-1").text, r'<a href="/t/strain"[^>]*aria-current="page"')
-        self.assertNotIn("Search</a>", page)
-        self.assertIn('<a class="brand" href="/">', page)
-        self.assertIn("Sign out", page)
-        self.assertIn('<script src="/static/app.js">', page)
-        self.assertNotIn("Users</a>", page)
-        admin = self.client("root").get("/admin/users").text
-        self.assertRegex(admin, r'<a class="admin" href="/admin/users" aria-current="page">Admin</a>')
-
-    def test_logged_out_pages_have_no_menu(self):
-        page = self.client().get("/login").text
-        self.assertIn('<body class="anon">', page)
-        self.assertNotIn("menu-toggle", page)
-        self.assertNotIn('id="menu"', page)
-
-    def test_menu_script_toggles_and_is_not_inline(self):
-        js = read("app.js")
-        for needle in ('classList.add("js")', ".menu-toggle", "aria-expanded", "Escape"):
-            self.assertIn(needle, js)
-        self.assertNotIn("<script>", self.client("alice").get("/").text)
-
-    def test_nav_puts_strain_before_plasmid_not_alphabetical(self):
-        page = self.client("alice").get("/").text
-        self.assertLess(page.index('href="/t/strain"'), page.index('href="/t/plasmid"'))
-
-    def test_no_emoji_anywhere_only_svg_icons(self):
-        self.create("alice", name="s1")
-        c = self.client("alice")
-        for path in ("/", "/t/strain", "/t/strain?view=cards", "/t/plasmid", "/r/ST-1", "/t/strain/new", "/me", "/login"):
-            self.assertFalse(EMOJI.search(c.get(path).text), path)
-        page = c.get("/t/strain").text
-        self.assertIn('href="/static/icons.svg#bacterium"', page)
-        self.assertIn('href="/static/icons.svg#dna"', c.get("/").text)               # home tiles carry the type icons
-        sprite = c.get("/static/icons.svg")
-        self.assertEqual(sprite.status_code, 200)
-        self.assertIn("image/svg", sprite.headers["content-type"])
-
-    def test_custom_types_get_the_box_icon(self):
-        from shelfblazer_app.web import svg_icon
-        self.assertEqual(self.store.type_icon("custom-type"), "box")
-        self.assertNotIn("<script", svg_icon("x", '"><script>'))
-
-    def test_a_type_chooses_its_icon_and_bad_icons_are_refused(self):
-        root = self.client("root")
-        self.post(root, "/admin/types/strain/settings", {"name": "Strain", "icon": "flask", "columns": ["plasmid"]})
-        self.assertEqual(self.store.schemas["strain"]["icon"], "flask")
-        self.assertIn("icons.svg#flask", self.client("alice").get("/t/strain").text)
-        self.post(root, "/admin/types/strain/settings", {"name": "Strain", "icon": "skull", "columns": ["plasmid"]})
-        self.assertEqual(self.store.schemas["strain"]["icon"], "flask")
-
-    def test_chips_and_avatars_render_and_escape(self):
-        self.create("alice", "plasmid", name="<i>pX</i>", resistance="Kan")
-        c = self.client("alice")
-        self.assertIn('class="chip"', c.get("/r/PL-1").text)
-        for path in ("/t/plasmid", "/t/plasmid?view=cards", "/r/PL-1"):
-            page = c.get(path).text
-            self.assertIn('class="avatar"', page, path)
-            self.assertNotIn("<i>pX</i>", page, path)
-        self.assertIn("rcards", c.get("/t/plasmid?view=cards").text)
-        self.assertIn("<table", self.client("alice").get("/t/plasmid?view=bogus").text)    # unknown view: the default (nothing remembered)
-
-    def test_list_links_keep_the_current_filters_and_view(self):
-        self.create("alice", name="s1")
-        c = self.client("alice")
-        me = self.uid("alice")
-        page = c.get(f"/t/strain?q=s&view=cards&sort=name&dir=desc&owner={me}").text
-        self.assertIn(f'href="/t/strain?q=s&sort=name&dir=desc&owner={me}&fuzzy=1&view=table&page=1"', page)
-        page = c.get(f"/t/strain?q=s&view=table&sort=name&dir=desc&owner={me}").text
-        self.assertIn(f'href="/t/strain?q=s&sort=id&dir=asc&owner={me}&fuzzy=1&view=table&page=1"', page)
-        self.assertIn(f'href="/t/strain?q=s&sort=name&dir=asc&owner={me}&fuzzy=1&view=table&page=1"', page)
-        self.assertNotIn("sort=&", page)
-        self.assertNotIn("view=&", page)
-
-    def test_every_record_id_is_a_code_snippet(self):
-        pl = self.create("alice", "plasmid", name="pX")
-        st = self.create("alice", name="s1", plasmid=pl)
-        c = self.client("alice")
-        self.post(c, f"/r/{st}/edit", {"name": "s1", "f_plasmid": pl, "version": self.version(st), "notes": f"derived from {pl}, not ST-99"})
-        self.assertIn(f'<a class="rid" href="/r/{st}">{st}</a>', c.get("/t/strain").text)
-        self.assertIn(f'<a class="rid" href="/r/{pl}" data-hue="2">{pl}</a>', c.get("/t/strain").text)     # a plasmid ID is green on a strain list
-        self.assertIn(f'<span class="idtag">{st}</span>', c.get("/t/strain?view=cards").text)
-        self.assertIn(f'<a class="rid" href="/r/{st}">{st}</a>', c.get("/?q=s1").text)
-        page = c.get(f"/r/{st}").text
-        self.assertIn(f'<a class="rid" href="/r/{pl}" data-hue="2">{pl}</a>', page)
-        self.assertNotIn('class="rid" href="/r/ST-99"', page)
-        self.assertIn(f'<a class="rid" href="/r/{st}" data-hue="1">{st}</a>', c.get(f"/r/{pl}").text)    # back-links carry the other type's colour
-        self.assertIn(f'<code class="rid">{st}</code>', page)
-        self.assertIn('<input class="mono" name="f_plasmid"', c.get(f"/r/{st}/edit").text)
-        r = self.post(c, "/t/strain/new", {"name": "x"})
-        self.assertRegex(c.get(r.headers["location"]).text, r'Created <code class="rid">ST-\d+</code>')
-        self.assertIn('<code class="rid">ST-9999</code> not found', c.get("/r/ST-9999").text)
-        self.assertRegex(read("style.css"), r"\.rid[^{]*\{[^}]*font-family:var\(--mono\)|\.rid,\.idtag\{font-family:var\(--mono\)")
-
-    def test_menu_names_are_plural_like_the_page_titles(self):
-        page = self.client("alice").get("/t/strain").text
-        self.assertRegex(page, r'<a href="/t/strain"[^>]*>(<svg.*?</svg>)?Strains</a>')
-        self.assertRegex(page, r'<a href="/t/plasmid"[^>]*>(<svg.*?</svg>)?Plasmids</a>')
-        self.assertRegex(page, r"<h1>(<svg.*?</svg>)?Strains ")
-
-    def test_new_records_do_not_offer_the_old_free_text_storage(self):
-        c = self.client("alice")
-        self.assertNotIn('name="f_storage"', c.get("/t/strain/new").text)
-        self.assertIn('name="f_genotype"', c.get("/t/strain/new").text)
-        rid = self.create("alice", name="s1", storage="Box 5 Well A1")                 # old data and scripted input are still stored
-        self.assertIn('name="f_storage"', c.get(f"/r/{rid}/edit").text)                 # and editable on an existing record
-        bad = self.post(c, "/t/strain/new", {"name": ""})                               # the error page keeps the same fields
-        self.assertEqual(bad.status_code, 422)
-        self.assertNotIn('name="f_storage"', bad.text)
-
-    def test_icons_only_in_home_tiles_the_type_page_title_and_sign_out(self):
-        self.create("alice", name="s1")
-        c = self.client("alice")
-        nav = re.search(r"<nav.*?</nav>", c.get("/t/strain").text, re.S).group(0)
-        self.assertNotIn("<svg", nav)
-        self.assertIn('class="card"', c.get("/").text)
-        self.assertEqual(c.get("/").text.count("icons.svg#bacterium"), 1)                 # the Strain tile
-        self.assertRegex(c.get("/t/strain").text, r"<h1><svg[^>]*><use href=\"/static/icons.svg#bacterium\"")
-        home = c.get("/").text
-        self.assertEqual(home.count("icons.svg#right-from-bracket"), 1)                  # the sign-out icon next to your name, nowhere else
-        self.assertIn("right-from-bracket", re.search(r'<div class="side-foot">.*?</header>', home, re.S).group(0))
-        self.assertNotIn("+ New", c.get("/").text)                                        # home tiles are plain links to the list
-
-    def test_admin_entry_is_last_in_the_menu_and_only_for_admins(self):
-        admin = re.search(r"<nav.*?</nav>", self.client("root").get("/").text, re.S).group(0)
-        self.assertTrue(admin.rstrip().endswith('<a class="admin" href="/admin/users">Admin</a></nav>'), admin[-120:])
-        self.assertNotIn("Users</a>", admin)
-        self.assertNotIn(">Types</a>", admin)
-        self.assertNotIn('class="admin"', self.client("alice").get("/").text)
-        # Users and Types are reached from the Admin pages
-        self.assertIn('href="/admin/types"', self.client("root").get("/admin/users").text)
-        self.assertIn('href="/admin/users"', self.client("root").get("/admin/types").text)
-        self.assertRegex(self.client("root").get("/admin/types").text, r'class="admin" href="/admin/users" aria-current="page"')
-
-    def test_empty_list_shows_a_friendly_state(self):
-        page = self.client("alice").get("/t/strain").text
-        self.assertIn('class="empty"', page)
-        self.assertIn("No strains yet", page)
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-
-FULL = "Room 6035 / Freezer 1 -80 / Freezer_1_rack12_Strain_Collec / box 'Strains collec (box 2)' / G3"
-
-
-class TestRowsPrefsStorageAndForm(Base):
-    def test_whole_rows_are_clickable(self):
-        self.create("alice", name="s1")
-        c = self.client("alice")
-        self.assertIn('<tr data-href="/r/ST-1">', c.get("/t/strain").text)
-        self.assertIn('<tr data-href="/r/ST-1">', c.get("/?q=s1").text)
-        self.assertIn('class="stretch" href="/r/ST-1"', c.get("/t/strain?view=cards").text)   # cards: the whole card is the link
-        js = read("app.js")
-        for needle in ('closest("tr[data-href]")', 'closest("a, button, input', "getSelection", "metaKey", "window.open"):
-            self.assertIn(needle, js)
-        self.assertIn("tr[data-href]{cursor:pointer}", read("style.css"))
-
-    def test_sort_and_view_are_remembered_per_type(self):
-        for n in ("beta", "alpha", "gamma"):
-            self.create("alice", name=n)
-        self.create("alice", "plasmid", name="pX")
-        c = self.client("alice")
-        r = c.get("/t/strain")
-        self.assertNotIn("listprefs", r.headers.get("set-cookie", ""))              # nothing chosen, nothing stored
-        r = c.get("/t/strain?sort=name&dir=desc")
-        self.assertIn("listprefs=", r.headers["set-cookie"])
-        page = c.get("/t/strain").text                                              # no parameters: last choice comes back
-        self.assertIn('name="sort" value="name"', page)
-        self.assertIn('name="dir" value="desc"', page)
-        self.assertLess(page.index("gamma"), page.index("beta"))
-        self.assertLess(page.index("beta"), page.index("alpha"))
-        other = c.get("/t/plasmid").text                                            # other types are unaffected
-        self.assertIn('name="sort" value="id"', other)
-        c.get("/t/strain?view=cards")
-        self.assertIn("rcards", c.get("/t/strain").text)                            # the view is remembered too
-        self.assertIn("rcards", c.get("/t/strain?sort=name&dir=desc&q=").text)      # ...and survives explicit sort links
-        self.assertIn("<table", c.get("/t/strain?view=table").text)
-        self.assertIn("<table", c.get("/t/strain").text)
-        c.get("/t/strain?sort=id&dir=asc")
-        self.assertIn('name="sort" value="id"', c.get("/t/strain").text)            # a new choice replaces the old one
-        self.assertIn("<table", self.client("alice").get("/t/strain").text)         # another browser starts with the defaults
-
-    def test_remembered_values_are_validated_and_the_cookie_is_safe(self):
-        self.create("alice", name="s1")
-        c = self.client("alice")
-        r = c.get("/t/strain?sort=name&dir=desc&view=cards")
-        cookie = r.headers["set-cookie"]
-        for flag in ("HttpOnly", "SameSite=lax", "Max-Age=31536000"):
-            self.assertIn(flag, cookie)
-        self.assertNotRegex(cookie.split(";")[0], r'[ ",]')                          # cookie-safe encoding
-        c.get("/t/strain?sort=%3Cscript%3E&dir=sideways&view=3d")                    # invalid values change nothing
-        self.assertNotIn("set-cookie", c.get("/t/strain?sort=nope").headers)
-        page = c.get("/t/strain").text
-        self.assertIn('name="sort" value="name"', page)
-        self.assertIn("rcards", page)
-        from urllib.parse import quote
-        for junk in ("not json", quote('{"strain":{"sort":"<x>","dir":"up","view":"x"},"ghost":{"sort":"id"}}'), quote("[1,2]"), quote('{"strain":5}')):
-            d = self.client("alice")
-            d.cookies.set("listprefs", junk)
-            r = d.get("/t/strain")
-            self.assertEqual(r.status_code, 200, junk)
-            self.assertIn('name="sort" value="id"', r.text)
-            self.assertIn("<table", r.text)
-
-    def test_storage_is_shown_short_with_the_full_path_available(self):
-        rid = self.create("alice", name="s1", storage=FULL)
-        c = self.client("alice")
-        lst = c.get("/t/strain").text
-        self.assertIn(">Box 2 Well G3<", lst)
-        self.assertIn(f'title="{FULL}"'.replace("'", "&#39;"), lst)                  # full path as tooltip
-        self.assertNotIn(f">{FULL.replace(chr(39), '&#39;')}<", lst)
-        self.assertIn('class="clamp storage"', lst)                                      # kept on one line
-        self.assertRegex(read("style.css"), r"\.clamp\.storage\{[^}]*white-space:nowrap")
-        self.assertIn(">Box 2 Well G3<", c.get("/t/strain?view=cards").text)
-        rec = c.get(f"/r/{rid}").text
-        self.assertIn("Box 2 Well G3", rec)
-        self.assertIn('class="muted small fullpath"', rec)
-        self.assertIn("Freezer_1_rack12_Strain_Collec", rec)                         # full path stays on the record page
-        self.assertIn("Freezer_1_rack12_Strain_Collec", c.get(f"/r/{rid}/edit").text)  # the form edits the stored text
-        self.assertIn(rid, c.get("/?q=Freezer_1_rack12").text)                       # and it is still searchable
-        self.assertEqual(self.store.records[rid]["fields"]["storage"], FULL)         # data untouched
-        self.create("alice", name="s2", storage="Box 5 Well A1")                     # short text typed by a person is shown as is
-        self.assertIn(">Box 5 Well A1<", c.get("/t/strain").text)
-
-    def test_storage_sorts_naturally(self):
-        for n, box in ((1, 10), (2, 2), (3, 1)):
-            self.create("alice", name=f"s{n}", storage=f"Room 1 / F / r / box 'Strains collec (box {box})' / A1")
-        page = self.client("alice").get("/t/strain?sort=storage&dir=asc").text
-        self.assertLess(page.index("Box 1 Well"), page.index("Box 2 Well"))
-        self.assertLess(page.index("Box 2 Well"), page.index("Box 10 Well"))
-
-    def test_create_form_has_save_and_save_and_add_another(self):
-        page = self.client("alice").get("/t/strain/new").text
-        self.assertRegex(page, r'<button class="primary" name="action" value="save">Save</button>\s*<button name="action" value="another">Save and add another</button>')
-        self.create("alice", name="s1")
-        edit = self.client("alice").get("/r/ST-1/edit").text
-        self.assertIn(">Save</button>", edit)
-        self.assertNotIn("add another", edit)                                         # editing has a single Save
-
-    def test_save_and_add_another_flow(self):
-        c = self.client("alice")
-        r = self.post(c, "/t/strain/new", {"name": "first", "action": "another"})
-        self.assertEqual((r.status_code, r.headers["location"]), (303, "/t/strain/new"))
-        page = c.get("/t/strain/new").text
-        self.assertRegex(page, r'Created <code class="rid">ST-1</code>')              # the new ID is confirmed on the fresh form
-        self.assertEqual(self.store.records["ST-1"]["name"], "first")
-        r = self.post(c, "/t/strain/new", {"name": "second", "action": "save"})
-        self.assertEqual(r.headers["location"], "/r/ST-2")
-        r = self.post(c, "/t/strain/new", {"name": "third"})                           # Enter key / no button value: plain save
-        self.assertEqual(r.headers["location"], "/r/ST-3")
-        bad = self.post(c, "/t/strain/new", {"name": "", "action": "another"})
-        self.assertEqual(bad.status_code, 422)                                         # nothing is created; both buttons come back
-        self.assertIn("Save and add another", bad.text)
-        self.assertEqual(len(self.store.records), 3)
-
-
-class TestStorageDisplayModes(Base):
-    SHORT = "Box 2 Well G3"
-
-    def set_mode(self, mode):
-        for f in self.store.schemas["strain"]["fields"]:
-            if f["key"] == "storage":
-                if mode is None:
-                    f.pop("display", None)
-                else:
-                    f["display"] = mode
-
-    def setUp(self):
-        super().setUp()
-        self.rid = self.create("alice", name="s1", storage=FULL)
-        self.c = self.client("alice")
-
-    def test_an_old_storage_field_without_a_setting_is_short(self):
-        self.set_mode(None)
-        self.store.reload()                                                   # definitions from before "display": storage was short
-        self.assertIn(f">{self.SHORT}<", self.c.get("/t/strain").text)
-        self.assertNotIn("[outdated]", self.c.get("/t/strain").text)
-
-    def test_outdated_shows_the_original_text_with_a_marker(self):
-        self.set_mode("outdated")
-        full = FULL.replace("'", "&#39;")
-        for path in ("/t/strain", "/t/strain?view=cards"):
-            page = self.c.get(path).text
-            self.assertIn(f">{full}</span>", page, path)                      # the stored text, unabbreviated
-            self.assertIn('class="outdated"', page, path)
-            self.assertIn("[outdated]", page, path)
-            self.assertNotIn(f">{self.SHORT}<", page, path)
-        rec = self.c.get(f"/r/{self.rid}").text
-        self.assertIn(full, rec)
-        self.assertIn("[outdated]", rec)
-        self.assertNotIn(f"{self.SHORT}", rec)
-        self.assertNotIn("fullpath", rec)                                      # the original is already what is shown
-        self.assertEqual(self.store.records[self.rid]["fields"]["storage"], FULL)   # data untouched
-        self.assertIn(self.rid, self.c.get("/?q=Freezer_1_rack12").text)       # still searchable
-
-    def test_full_shows_the_original_without_a_marker(self):
-        self.set_mode("full")
-        page = self.c.get("/t/strain").text
-        self.assertIn(FULL.replace("'", "&#39;"), page)
-        self.assertNotIn("[outdated]", page)
-
-    def test_unknown_display_shows_the_text_as_stored(self):
-        for bad in ("outdated ", "Short", "", 3):
-            self.set_mode(bad)
-            page = self.c.get("/t/strain").text
-            self.assertNotIn(f">{self.SHORT}<", page, repr(bad))
-            self.assertNotIn("[outdated]", page, repr(bad))
-
-    def test_any_text_field_can_be_a_location(self):
-        f = next(f for f in self.store.schemas["strain"]["fields"] if f["key"] == "genotype")
-        f["display"] = "short"
-        rid = self.create("alice", name="s2", genotype=FULL)
-        page = self.c.get(f"/r/{rid}").text
-        self.assertIn(self.SHORT, page)
-        self.assertIn('class="muted small fullpath"', page)                  # the full text underneath
-
-    def test_marker_only_where_there_is_storage(self):
-        self.set_mode("outdated")
-        self.create("alice", name="no storage here")
-        page = self.c.get("/t/strain").text
-        self.assertEqual(page.count("[outdated]"), 1)                          # one record has storage, one does not
-
-    def test_marker_and_css_exist(self):
-        css = read("style.css")
-        self.assertRegex(css, r"\.outdated\{[^}]*color:var\(--warnfg\)")
-        with open(os.path.join(STATIC, "..", "templates", "list.html"), encoding="utf-8") as fh:
-            self.assertIn('title="This location comes from the old database', fh.read())
 
 
 class TestFormLabels(unittest.TestCase):

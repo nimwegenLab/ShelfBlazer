@@ -1,7 +1,7 @@
 """Computed fields: the safe formula language (security first), its functions, and the store integration."""
 import datetime, json, os, subprocess, tempfile, time, unittest
 
-from helpers import purge
+from helpers import ALICE, purge
 from shelfblazer import formula
 from shelfblazer.store import Store
 
@@ -16,7 +16,6 @@ STRAIN = {"name": "Strain", "prefix": "ST", "list_columns": ["id", "name"], "fie
     {"key": "plasmid", "label": "Plasmid", "type": "ref", "to": "plasmid", "multiple": True},
     {"key": "resist", "label": "Resistance", "type": "computed", "expr": "join(', ', unique(flatten(values(refs('plasmid'), 'resistance'))))"},
     {"key": "age", "label": "Age (days)", "type": "computed", "expr": "age_days()"}]}
-ALICE = {"username": "alice", "uid": "alice", "name": "Alice A", "role": "user", "active": True}
 
 
 class Base(unittest.TestCase):

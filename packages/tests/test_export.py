@@ -2,7 +2,7 @@
 import csv, io, unittest
 
 from shelfblazer import export
-from test_bulk import ALICE, BOB, ROOT, Base
+from helpers import ALICE, BOB, ROOT, Base
 
 
 def rows(text):

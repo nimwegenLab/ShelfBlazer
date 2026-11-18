@@ -7,11 +7,17 @@ document.addEventListener("submit", function (e) {
   if (msg && !window.confirm(msg)) e.preventDefault();
 });
 
-// Menu toggle (hamburger) on narrow screens.
+// Menu toggle on narrow screens: the menu opens as a full-screen layer (the button shows an X), the page behind it does not scroll,
+// and closing it (the X or Esc) puts the focus back on the button.
 function setMenu(header, open) {
+  var was = header.classList.contains("open");
   header.classList.toggle("open", open);
+  document.body.classList.toggle("menu-open", open);
   var b = header.querySelector(".menu-toggle");
-  if (b) b.setAttribute("aria-expanded", open ? "true" : "false");
+  if (b) {
+    b.setAttribute("aria-expanded", open ? "true" : "false");
+    if (was && !open) b.focus();
+  }
 }
 document.addEventListener("click", function (e) {
   var b = e.target.closest(".menu-toggle");

@@ -3,14 +3,12 @@ import json, os, subprocess, tempfile, unittest
 
 from shelfblazer import uploads
 from shelfblazer.store import Forbidden, NotFound, Store, ValidationError
+from helpers import ALICE, BOB, ROOT
 
 SCHEMA = {"name": "Document", "prefix": "DC", "list_columns": ["id", "name"], "fields": [
     {"key": "name", "label": "Title", "type": "text", "required": True},
     {"key": "file_missing", "label": "File missing", "type": "bool"},
     {"key": "attachments", "label": "Files", "type": "file", "multiple": True}]}
-ALICE = {"username": "alice", "uid": "alice", "name": "Alice A", "role": "user", "active": True}
-BOB = {"username": "bob", "uid": "bob", "name": "Bob B", "role": "user", "active": True}
-ROOT = {"username": "root", "uid": "root", "name": "Root", "role": "admin", "active": True}
 
 
 class TestRules(unittest.TestCase):

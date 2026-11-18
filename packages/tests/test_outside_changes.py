@@ -3,12 +3,12 @@ it writes or shows anything, so a running server never writes an outdated copy o
 import json, os, subprocess, tempfile, unittest
 
 from shelfblazer.store import Conflict, Store
+from helpers import ALICE
 
 STRAIN = {"name": "Strain", "prefix": "ST", "list_columns": ["id", "name"], "fields": [
     {"key": "name", "label": "Name", "type": "text", "required": True},
     {"key": "genotype", "label": "Genotype", "type": "text"},
     {"key": "notes2", "label": "Old notes", "type": "text"}]}
-ALICE = {"username": "alice", "uid": "alice", "role": "user", "active": True, "name": "Alice"}
 
 
 class OutsideChanges(unittest.TestCase):

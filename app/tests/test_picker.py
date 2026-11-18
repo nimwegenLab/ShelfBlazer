@@ -1,14 +1,7 @@
 """Reference picker: the JSON lookup and the markup it enhances."""
-import os, unittest
+import unittest
 
-from test_app import Base
-
-STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shelfblazer_app", "static")
-
-
-def read(name):
-    with open(os.path.join(STATIC, name), encoding="utf-8") as fh:
-        return fh.read()
+from test_app import Base, read
 
 
 class TestRecordsApi(Base):

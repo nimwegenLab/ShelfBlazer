@@ -3,7 +3,7 @@ import unittest
 
 from shelfblazer import tableimport as ti
 from shelfblazer.errors import Forbidden
-from test_bulk import ALICE, ROOT, Base
+from helpers import ALICE, ROOT, Base
 
 
 def parsed(text, **kw):

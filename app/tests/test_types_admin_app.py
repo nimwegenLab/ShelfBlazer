@@ -211,7 +211,7 @@ class TestOrder(Admin):
 
     def home(self, c):
         import re
-        return re.findall(r'<a class="card" href="/t/([a-z-]+)"', c.get("/").text)
+        return re.findall(r'<a class="l" href="/t/([a-z-]+)"', c.get("/").text)
 
     def test_default_order_is_the_builtin_sequence_then_alphabetical(self):
         self.p("/admin/types/new", {"name": "Zinc", "prefix": "ZN"})

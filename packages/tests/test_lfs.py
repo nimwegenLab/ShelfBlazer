@@ -4,11 +4,11 @@ from unittest import mock
 
 from shelfblazer import store as store_mod
 from shelfblazer.store import LFS_ATTRIBUTES, Store, StoreError
+from helpers import ALICE
 
 SCHEMA = {"name": "Document", "prefix": "DC", "list_columns": ["id", "name"], "fields": [
     {"key": "name", "label": "Title", "type": "text", "required": True},
     {"key": "attachments", "label": "Files", "type": "file", "multiple": True}]}
-ALICE = {"username": "alice", "uid": "alice", "name": "Alice A", "role": "user", "active": True}
 CONTENT = b"\x89PNG\r\n" + bytes(range(256)) * 40
 POINTER = "version https://git-lfs.github.com/spec/v1"
 

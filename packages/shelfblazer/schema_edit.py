@@ -286,6 +286,12 @@ def validate_schema(slug, schema, others, old=None):
     seq_key = schema.get("sequence_search")
     if seq_key is not None and not any(f.get("key") == seq_key and f.get("type") in ("text", "longtext") for f in fields):
         problems.append("sequence_search must name a text field of this type")
+    scan = schema.get("scan_fields")
+    if scan is not None and (not isinstance(scan, list) or not scan or not all(any(f.get("key") == k and f.get("type") in ("text", "longtext") and not f.get("hidden") for f in fields) for k in scan)):
+        problems.append("scan_fields must list text fields of this type (the first one receives scanned codes on a new record)")
+    pic = schema.get("thumbnail")
+    if pic is not None and not any(f.get("key") == pic and f.get("type") == "file" and not f.get("hidden") for f in fields):
+        problems.append("thumbnail must name a file field of this type (its first picture shows on the record page and the cards)")
     cols = schema.get("list_columns", [])
     if not cols:
         problems.append("choose at least one column for the list")

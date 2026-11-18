@@ -13,6 +13,8 @@ Design: [docs/design.md](docs/design.md). Changes: [CHANGELOG.md](CHANGELOG.md).
 - **Bulk edit** (one commit, with Undo) and **export** to a tab-separated file, from the list's *Select* mode.
 - **Import from CSV/TSV** (administrators, from the type page: *Import records from a file…*). Upload a file with a header line, say what each column is (titles that match a field are chosen for you), see every row checked with the form's rules, then import it as one commit with Undo. A row with an ID updates that record, a row without one creates a new record; a blank cell leaves the field as it is; one bad row stops the whole import. Up to 5,000 rows and 1 MB per file; Excel files are saved as CSV or TSV first. Person fields take a user name or ID.
 - **Home:** the types as tiles and recent activity, read from the git history.
+- **Record picture** (optional, per type with `thumbnail`): the first image in the chosen File field (jpg, png, webp, gif or avif) shows large at the top of the record page and as a cover on the cards. Photos are shrunk in the browser to at most 1000 px (JPEG) before upload, so a 4 MB phone photo becomes about 100 KB; formats the browser cannot decode (HEIC on a desktop) are uploaded unchanged and stay plain file links. To replace the picture, remove the old file first.
+- **Barcode scanning** (optional, per type with `scan_fields`): the *Scan* button next to the home search reads a code with the camera, decoded **in the browser** (the picture never leaves the device). One record carrying the code opens; several are listed; none offers *Add as <type>* with the code filled in. A USB or Bluetooth reader typing into the home search works the same way. Codes are compared ignoring case, spaces, dots, hyphens and slashes, and the UPC, EAN-13 and 14-digit forms of one product match; from GS1 codes only the product part counts (GTIN, elements 240 and 91), never the lot or expiry. The camera needs HTTPS (or localhost). The decoder is zxing-wasm 2.2.4 (MIT; its compiled zxing-cpp engine is Apache-2.0), served from `static/vendor/zxing/` with its licences, which is why the security policy allows `'wasm-unsafe-eval'`.
 - **Types page** (administrators): create types, add and change fields, options, list columns, colour, icon, permissions, menu order. Each change is one commit.
 - **Users page** (administrators): accounts, roles, set-password links, each person's entries, the sign-up passphrase.
 - **Look:** *Spectrum* (a colour per type) or *Classic*, and Auto / Day / Night. `app/tests/test_look.py` checks the contrast of every colour pair.
@@ -77,6 +79,8 @@ Behaviour comes from these settings, never from field names, so a new type works
 | Type: `icon` | `box bacterium dna bullseye flask table-cells layer-group file-lines` |
 | Type: `permissions` | `read`: `all` / `admin`. `create`: `all` / `admin`. `edit`: `owner` (creator or administrator, the default) / `admin` / `all`. A type only administrators read is invisible everywhere else: menus, search, links, formulas, downloads |
 | Type: `sequence_search` | The field the list's *sequence* search looks in: both strands, up to 5 mismatches, at least 6 bases |
+| Type: `thumbnail` | A File field of the type whose first image is the record's picture (record page and cards); its file chooser takes one image and shrinks it before upload |
+| Type: `scan_fields` | The text fields holding the codes a product is known by (several per field, separated by commas, semicolons or new lines); switches on barcode scanning for the type; the first one receives the code on a new record |
 | Type: `former_prefixes` | Old ID prefixes still open their records (written by `rename-prefix`) |
 | Field types | `text longtext number date select multiselect bool url user ref file computed` |
 | `required`, `help` | Must be filled in; a hint next to the label |
@@ -151,12 +155,20 @@ python3 -m venv .venv
 | Path | What it is |
 |---|---|
 | `packages/shelfblazer/` | **Core package** (no web code). `store.py` (records, type definitions, counters, git commits under a file lock), `recordfile.py` (the file format), `fields.py` (what each field setting does, value checks), `perms.py` (permission rules), `schema_edit.py` (editing type definitions), `formula.py` (calculated fields), `auth.py` (accounts), `search.py`, `seqsearch.py`, `export.py`, `uploads.py`, `markdown.py`, `builtin.py` (default icons and colours for common lab item types) |
-| `app/shelfblazer_app/` | **Web app**. `web.py` (lists, records, forms, search), `accounts.py` (sign-in, sign-up, your account), `users_admin.py`, `types_admin.py`, `bulk.py`, `records_import.py`, `export.py`, `files.py`, `cli.py` (the `shelfblazer` command), `templates/`, `static/` |
+| `app/shelfblazer_app/` | **Web app**. `web.py` (builds the app and the helpers every page uses), `lists.py` (home, search, list pages), `records.py` (record pages, forms), `cells.py` (how values show on pages and in forms), `middleware.py` (body limit, security headers, error pages), `views.py` (icons, colours, times), `accounts.py` (sign-in, sign-up, your account), `users_admin.py`, `types_admin.py`, `bulk.py`, `records_import.py`, `export.py`, `files.py`, `cli.py` (the `shelfblazer` command), `templates/`, `static/` |
 | `packages/tests/`, `app/tests/` | Core unit tests; app tests (HTTP and command line) |
 | `deploy/`, `Dockerfile` | Container image and compose files; see [deploy/README.md](deploy/README.md) |
 | `var/` | The runtime home when running from source (git-ignored) |
 
 ### Tests
+
+```bash
+.venv/bin/python run_tests.py                 # both suites, one process per test file, as many at a time as there are cores
+.venv/bin/python run_tests.py import look     # only the test files whose name contains "import" or "look"
+```
+
+`run_tests.py` runs the same tests with the same flags as the two plain commands below, about four times faster on an 8-core machine
+(every test uses its own temporary folder and git repository, so files can run side by side). The plain commands still work:
 
 ```bash
 .venv/bin/python -W error::ResourceWarning -m unittest discover -s packages/tests

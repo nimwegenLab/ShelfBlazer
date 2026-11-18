@@ -3,6 +3,7 @@ import json, os, subprocess, tempfile, unittest
 
 from shelfblazer import auth, schema_edit
 from shelfblazer.store import Store, StoreError, ValidationError
+from helpers import ALICE
 
 auth.SCRYPT.update(n=2**10)
 
@@ -12,7 +13,6 @@ STRAIN = {"name": "Strain", "prefix": "ST", "list_columns": ["id", "name"], "fie
 DOC = {"name": "Document", "prefix": "DC", "list_columns": ["id", "name"], "fields": [
     {"key": "name", "label": "Title", "type": "text", "required": True},
     {"key": "related", "label": "Related", "type": "ref", "to": "*", "multiple": True}]}
-ALICE = {"username": "alice", "uid": "alice", "role": "user", "active": True, "name": "Alice"}
 
 
 class RenamePrefix(unittest.TestCase):

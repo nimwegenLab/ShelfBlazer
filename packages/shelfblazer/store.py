@@ -5,7 +5,7 @@ written, and committed to git with the acting user as author. The in-memory ``re
 """
 import contextlib, datetime, fcntl, glob, json, logging, os, re, shutil, subprocess, threading
 
-from . import builtin, fields as fieldrules, formula, perms, schema_edit, uploads
+from . import builtin, fields as fieldrules, formula, history, perms, schema_edit, uploads
 from .auth import UID_RE                                                   # a user ID
 from .errors import Conflict, Forbidden, NotFound, StoreError, ValidationError
 from .fields import FIELD_DISPLAYS, FIELD_VALIDATORS, check_dna, normalize_dois
@@ -252,32 +252,8 @@ class Store:
             self.git("lfs", "install", "--local")
 
     def enable_lfs(self, rewrite_history=False):
-        """Start storing attached files with LFS (one commit). Files already in the history stay there in full unless
-        ``rewrite_history`` (``git lfs migrate import``: every commit is rewritten, so do it before the first push)."""
-        lfs_available()
-        with self._write_lock():
-            if self.git("status", "--porcelain").strip():
-                raise StoreError("the data repository has uncommitted changes; commit them first")
-            if rewrite_history:
-                self.git("lfs", "install", "--local")
-                self.git("lfs", "migrate", "import", "--everything", "--yes", "--include=" + ",".join(LFS_PATTERNS))
-                self.git("lfs", "checkout")                              # migrate leaves pointer files on disk: put the contents back
-                return
-            path = os.path.join(self.repo, ".gitattributes")
-            old = ""
-            if os.path.exists(path):
-                with open(path, encoding="utf-8") as fh:
-                    old = fh.read()
-            missing = [l for l in LFS_ATTRIBUTES.splitlines(True) if l not in old]
-            if missing:
-                write_text(path, old + ("" if not old or old.endswith("\n") else "\n") + "".join(missing))
-            self.git("lfs", "install", "--local")
-            dirs = [p.split("/**")[0] for p in LFS_PATTERNS if os.path.isdir(os.path.join(self.repo, p.split("/**")[0]))]
-            self.git("add", "--", ".gitattributes")
-            if dirs:
-                self.git("add", "--renormalize", "--", *dirs)            # the files already there become LFS pointers
-            self.commit([".gitattributes", *dirs], "store attached files with Git LFS",
-                        MAINTENANCE)
+        from . import maintenance
+        return maintenance.enable_lfs(self, rewrite_history)
 
     def recover(self):
         """Startup check: commit anything left uncommitted by a crash, clear a stale index lock."""
@@ -994,105 +970,12 @@ class Store:
         return self.git("rev-parse", "HEAD").strip()
 
     def drop_field(self, type_slug, key):
-        """Maintenance: remove a field from a type definition and from every record of that type, in one git commit.
-
-        Returns the number of records that carried the field. The record title ("name") cannot be dropped.
-        """
-        actor = MAINTENANCE
-        changed = []
-        with self._write_lock():
-            sch = self.schemas.get(type_slug)
-            if sch is None:
-                raise NotFound(type_slug)
-            if key == "name":
-                raise ValidationError({"field": "the name cannot be removed"})
-            if key not in [f["key"] for f in sch["fields"]]:
-                raise ValidationError({"field": f"{type_slug} has no field '{key}'"})
-            new_schema = dict(sch, fields=[f for f in sch["fields"] if f["key"] != key],
-                              list_columns=[c for c in sch.get("list_columns", []) if c != key])
-            spath = os.path.join(self.repo, "config", "types", type_slug + ".yaml")
-            write_text(spath, json.dumps(new_schema, indent=2, ensure_ascii=False) + "\n")
-            paths = [spath]
-            new_order = [f["key"] for f in new_schema["fields"]]
-            for rid, rec in list(self.records.items()):
-                if rec["type"] != type_slug or key not in rec["fields"]:
-                    continue
-                new = dict(rec, fields={k: v for k, v in rec["fields"].items() if k != key})
-                path = self.path_of(rid, type_slug)
-                text = serialize_record(new, new_order)
-                write_text(path, text)
-                new["_version"] = version_of(text)
-                paths.append(path)
-                changed.append((rid, new))
-            self.commit(paths, f"{type_slug}: remove field '{key}' ({len(changed)} records)", actor)
-            self.schemas[type_slug] = new_schema
-            for rid, new in changed:
-                self.records[rid] = new
-        for rid, _ in changed:
-            self._notify(rid)
-        return len(changed)
+        from . import maintenance
+        return maintenance.drop_field(self, type_slug, key)
 
     def rename_prefix(self, type_slug, new_prefix, dry_run=False):
-        """Maintenance: give a type a new ID prefix (ST-12 becomes BS-12), in one git commit.
-
-        Renames the record files, rewrites the ID inside them, and rewrites every mention of the old IDs in all records
-        (links and notes), so nothing is left pointing at the old IDs. The old prefix is kept in the type definition
-        ("former_prefixes") so old IDs still open the record and its history still reads across the rename.
-        Returns {"old", "new", "renamed", "files": {type: files changed}, "mentions": [(file, count)] outside the type's own files}.
-        With dry_run nothing is written.
-        """
-        with self._write_lock():
-            report = self._rename_prefix(type_slug, new_prefix, dry_run)
-        if not dry_run:
-            self.reload()
-            self._notify(None)
-        return report
-
-    def _rename_prefix(self, type_slug, new_prefix, dry_run):
-        sch = self.schemas.get(type_slug)
-        if sch is None:
-            raise NotFound(type_slug)
-        old, new = sch["prefix"], (new_prefix or "").strip().upper()
-        if not schema_edit.PREFIX_RE.match(new):
-            raise ValidationError({"prefix": "the ID prefix must be exactly two capital letters"})
-        if new == old:
-            raise ValidationError({"prefix": f"{type_slug} already uses {old}"})
-        if new in self.prefix_type or new in self.former_prefix:
-            raise ValidationError({"prefix": f"the prefix {new} is already used by another type"})
-        if self.git("status", "--porcelain", "--", "data", "config", check=False).strip():
-            raise StoreError("the data folder has uncommitted changes; commit or discard them first")
-        pat = re.compile(rf"(?<![A-Za-z0-9]){old}-(\d+)\b")
-        changes, mentions, per_type, renamed = [], [], {}, 0
-        for path in sorted(glob.glob(os.path.join(self.repo, "data", "*", "*.md"))):
-            with open(path, encoding="utf-8") as fh:
-                text = fh.read()
-            new_text, n = pat.subn(rf"{new}-\1", text)
-            own = os.path.basename(os.path.dirname(path)) == type_slug
-            target = os.path.join(os.path.dirname(path), pat.sub(rf"{new}-\1", os.path.basename(path))) if own else path
-            if n or target != path:
-                changes.append((path, target, new_text))
-                slug = os.path.basename(os.path.dirname(path))
-                per_type[slug] = per_type.get(slug, 0) + 1
-                renamed += target != path
-                if not own:
-                    mentions.append((os.path.relpath(path, self.repo), n))
-        dirs = [(d, os.path.join(os.path.dirname(d), pat.sub(rf"{new}-\1", os.path.basename(d))))
-                for d in sorted(glob.glob(os.path.join(self.repo, "data", "files", f"{old}-*"))) if os.path.isdir(d)]
-        report = dict(old=old, new=new, renamed=renamed, files=per_type, mentions=mentions, folders=len(dirs))
-        if dry_run:
-            return report
-        for path, target, new_text in changes:
-            write_text(target, new_text)
-            if target != path:
-                os.remove(path)
-        for src, dst in dirs:
-            shutil.move(src, dst)
-        spath = os.path.join(self.repo, "config", "types", type_slug + ".yaml")
-        new_schema = dict(sch, prefix=new, former_prefixes=[old] + [p for p in sch.get("former_prefixes", []) if p != old])
-        write_text(spath, json.dumps(new_schema, indent=2, ensure_ascii=False) + "\n")
-        self.git("add", "-A", "--", "data", "config")
-        self.git("commit", "-q", "-m", f"{type_slug}: ID prefix {old} -> {new} ({renamed} records)", author=author_of(MAINTENANCE))
-        return report
+        from . import maintenance
+        return maintenance.rename_prefix(self, type_slug, new_prefix, dry_run)
 
     def _notify(self, rid):
         self._backrefs = None                      # the reverse-link index is rebuilt on next use
@@ -1128,68 +1011,12 @@ class Store:
         ok = self.readable_types(viewer)
         return lambda r: r["type"] in ok and (not r["archived"] or perms.can_see_archived(viewer, r))
 
-    _ACTIVITY = re.compile(r"^([A-Z]{2}-\d+): (create|update|archive|restore|delete) by (\S+)$")
-    _BULK = re.compile(r"^bulk: (.+) \((\d+) (\S+) records\)$")
-
+    # ---- history (read-only; see history.py)
     def recent_activity(self, viewer, limit=8):
-        """The latest changes to records this viewer may see, newest first: dicts with when, who (user ID), action, id, name, type, deleted."""
-        out = []
-        ok = self.readable_types(viewer)
-        lines = self.git("log", "-300", "--format=%aI%x09%s", "--", "data", check=False).splitlines()
-        for line in lines:
-            when, _, subject = line.partition("\t")
-            m = self._ACTIVITY.match(subject)
-            if m:
-                rid, action, who = m.groups()
-                rid = self.canonical_id(rid)
-                rec = self.records.get(rid)
-                slug = rec["type"] if rec else self.prefix_type.get(rid.split("-")[0])
-                if slug not in ok or (rec and not self.can_see(viewer, rec)):
-                    continue
-                if out and (out[-1]["who"], out[-1]["id"], out[-1]["action"]) == (who, rid, action):
-                    continue                                                    # several saves in a row are one line
-                out.append(dict(when=when, who=who, action=action, id=rid, name=rec["name"] if rec else "", type=slug, deleted=rec is None))
-            else:
-                m = self._BULK.match(subject)
-                if m and m.group(3) in ok:
-                    out.append(dict(when=when, who=None, action="bulk", id=None, name=f"{m.group(1)} ({m.group(2)} {self.schemas[m.group(3)]['name'].lower()} records)",
-                                    type=m.group(3), deleted=False))
-            if len(out) >= limit:
-                break
-        return out
+        return history.recent_activity(self, viewer, limit)
 
     def history(self, rid, limit=30):
-        rec = self.records.get(rid)
-        if not rec:
-            raise NotFound(rid)
-        out = self.git("log", f"-{limit}", "--format=%h%x09%an%x09%ad%x09%s", "--date=short", "--",
-                       *self._rel_paths(rid, rec["type"]), check=False)
-        return [dict(zip(("sha", "author", "date", "subject"), l.split("\t", 3))) for l in out.splitlines() if l]
+        return history.record_history(self, rid, limit)
 
     def record_at(self, rid, sha):
-        """A record as one of its own commits saved it (read-only, no checkout): dict(rec, schema, sha, author, when, subject, current).
-        ``current`` is True for the newest commit that touched the record: that version is the record as it is now.
-        ``sha`` must be a commit that changed this record's file; anything else is NotFound. The type definition is the one
-        from the same commit, so fields dropped or relabelled since still read as they did then."""
-        cur = self.records.get(rid)
-        if not cur or not re.fullmatch(r"[0-9a-f]{7,40}", sha or ""):
-            raise NotFound(rid)
-        rels = self._rel_paths(rid, cur["type"])
-        row = self.git("log", "-1", "--format=%H%x09%an%x09%aI%x09%s", sha, "--", *rels, check=False).rstrip("\n").split("\t", 3)
-        if len(row) != 4 or not row[0].startswith(sha):                 # unknown commit, or one that did not touch this record
-            raise NotFound(rid)
-        full, author, when, subject = row
-        latest = self.git("log", "-1", "--format=%H", "--", *rels, check=False).strip()      # the newest commit that touched this record
-        text = ""
-        for rel in rels:                                                # the file's name then: its current one, or one under a former prefix
-            text = self.git("show", f"{full}:{rel}", check=False)
-            if text.startswith("---\n"):
-                break
-        if not text.startswith("---\n"):                                # the record was deleted in that commit
-            raise NotFound(rid)
-        schema_text = self.git("show", f"{full}:config/types/{cur['type']}.yaml", check=False)
-        try:
-            schema = fieldrules.upgrade_schema(json.loads(schema_text))
-        except ValueError:
-            schema = self.schemas[cur["type"]]
-        return dict(rec=parse_record(text, f"{rid}@{sha}"), schema=schema, sha=full, author=author, when=when, subject=subject, current=(full == latest))
+        return history.record_at(self, rid, sha)

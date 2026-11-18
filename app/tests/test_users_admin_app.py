@@ -1,14 +1,7 @@
 """User admin page: order, filter, entry links and the entries page, copy button for one-time links."""
 import json, os, re, unittest
 
-from test_app import Base
-
-STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shelfblazer_app", "static")
-
-
-def read(name):
-    with open(os.path.join(STATIC, name), encoding="utf-8") as fh:
-        return fh.read()
+from test_app import Base, read, tags
 
 
 class TestUsersPage(Base):
@@ -139,11 +132,11 @@ class TestResetLink(Base):
 
 
 class TestSidebar(Base):
-    def test_sign_out_is_an_icon_next_to_the_name(self):
+    def test_sign_out_is_an_icon_next_to_the_name_and_text_on_phones(self):
         page = self.client("alice").get("/").text
         self.assertRegex(page, r'<div class="whorow"><a href="/me" class="who".*?</a>\s*<form method="post" action="/logout".*?title="Sign out" aria-label="Sign out">'
                          r'<svg class="ico".*?#right-from-bracket')
-        self.assertNotRegex(page, r">\s*Sign out\s*<")                                         # no text link any more
+        self.assertTrue(tags(page, "span", class_="signout-text", _text="Sign out"))              # shown instead of the icon in the phone menu
 
 
 if __name__ == "__main__":

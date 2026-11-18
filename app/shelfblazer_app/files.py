@@ -16,7 +16,7 @@ def register(app, c):
     @app.post("/r/{rid}/files")
     async def upload(request: Request, rid: str):
         user = c.need_user(request)
-        rec = store.readable(user, rid)                # the size is checked by web.BodyLimit before this runs
+        rec = store.readable(user, rid)                # the size is checked by middleware.BodyLimit before this runs
         if rec is None:
             raise NotFound(rid)
         if not store.can_edit(user, rec):        # before the body is read: a refused upload never reaches the disk

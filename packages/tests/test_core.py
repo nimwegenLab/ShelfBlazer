@@ -1,7 +1,7 @@
 """Core library tests (no web code). Run: .venv/bin/python -m unittest discover -s packages/tests -v"""
 import json, os, subprocess, tempfile, unittest
 
-from helpers import purge
+from helpers import ALICE, BOB, ROOT, purge
 from shelfblazer import auth, markdown, perms
 from shelfblazer.search import Index
 from shelfblazer.store import (Conflict, Forbidden, Store, ValidationError, parse_record, serialize_record,
@@ -16,9 +16,6 @@ SCHEMA = {"name": "Strain", "prefix": "ST", "list_columns": ["id", "name"], "fie
     {"key": "date", "label": "Date", "type": "date"},
     {"key": "tags", "label": "Tags", "type": "multiselect", "options": ["a", "b"]},
     {"key": "ok", "label": "OK", "type": "bool"}]}
-ALICE, BOB, ROOT = ({"username": "alice", "uid": "alice", "role": "user", "active": True, "name": "Alice"},
-                    {"username": "bob", "uid": "bob", "role": "user", "active": True, "name": "Bob"},
-                    {"username": "root", "uid": "root", "role": "admin", "active": True, "name": "Root"})
 
 
 class TestPerms(unittest.TestCase):

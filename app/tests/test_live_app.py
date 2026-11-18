@@ -1,7 +1,7 @@
 """Live filtering while typing: the markup the script relies on, and that the server answers the fetched URLs with exactly the results."""
 import os, re, unittest
 
-from test_app import Base
+from test_app import Base, tags
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shelfblazer_app", "static")
 
@@ -58,7 +58,7 @@ class TestLive(Base):
 
     def test_home_search_is_live_and_the_exact_id_still_jumps_on_enter(self):
         home = self.c.get("/").text
-        self.assertIn('class="search" data-live', home)
+        self.assertTrue(tags(home, "form", class_="search", data_live=""))
         self.assertIn('id="results"', home)
         self.assertIn('<script src="/static/live.js" defer>', home)
         r = self.c.get("/?q=alpha")
