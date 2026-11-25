@@ -5,7 +5,7 @@ Only what the viewer may see leaves: records they cannot read are skipped, hidde
 evaluated with the viewer's visibility, people are written by display name (never by user ID)."""
 import csv, io, re
 
-from . import fields as fieldrules, formula
+from . import fields as fieldrules, formula, ids as ids_mod
 
 SEP = ", "                                          # between several values of one cell (options, links, file names)
 EXTRA = [("created_by", "Owner"), ("created_at", "Created"), ("archived", "Archived")]
@@ -28,10 +28,15 @@ def safe(text):
     return text
 
 
+def written(rid, viewer):
+    """An ID as written in the file: your own personal records as ST-P1 (an import reads it as yours), anyone else's with its owner."""
+    return ids_mod.short(rid) if viewer and ids_mod.owner_of(rid) == viewer["uid"] else rid
+
+
 def value(store, rec, key, viewer):
     """One cell as text."""
     if key == "id":
-        return rec["id"]
+        return written(rec["id"], viewer)
     if key == "name":
         return rec["name"]
     if key == "created_by":
@@ -48,7 +53,7 @@ def value(store, rec, key, viewer):
         return formula.format_value(v)
     v = rec["fields"].get(key)
     if isinstance(v, list):
-        return SEP.join(fieldrules.as_text(store, fdef, i) for i in v)
+        return SEP.join(written(i, viewer) if fdef["type"] == "ref" else fieldrules.as_text(store, fdef, i) for i in v)
     return fieldrules.as_text(store, fdef, v)
 
 

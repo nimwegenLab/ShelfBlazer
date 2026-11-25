@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block mainattr %} data-hue="{{ type_hue(slug) }}"{% endblock %}{% block title %}Type {{ schema.name }}{% endblock %}
 {% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <a href="/admin/types">Types</a> · <strong>{{ schema.name }}</strong></p><div class="hero"><div><span class="typechip">{{ icon(slug) }}{{ schema.name }}</span><h1>Type: {{ schema.name }}</h1></div><div class="actions"><a class="btn" href="/t/{{ slug }}">Open the list</a> <a class="btn" href="/admin/types">All types</a></div></div>
 <p class="muted">ID prefix <code class="rid">{{ schema.prefix }}</code> (fixed) · {{ n }} record{{ '' if n == 1 else 's' }} · stored in <code>config/types/{{ slug }}.yaml</code></p>
-<p><a class="btn" href="/admin/types/{{ slug }}/import">Import records from a file…</a></p>
+<p><a class="btn" href="/t/{{ slug }}/import">Import records from a file…</a></p>
 {% if warnings %}<div class="flash err">{% for w in warnings %}{{ w }}<br>{% endfor %}</div>{% endif %}
 
 <h2>Settings</h2>
@@ -14,6 +14,7 @@
 <label>Seeing the records<select name="perm_read"><option value="" {% if not perm.read %}selected{% endif %}>Everyone signed in</option><option value="admin" {% if perm.read == 'admin' %}selected{% endif %}>Administrators only (the type is hidden from everyone else)</option></select></label>
 <label>Adding records<select name="perm_create"><option value="" {% if not perm.create %}selected{% endif %}>Everyone who can see the type</option><option value="admin" {% if perm.create == 'admin' %}selected{% endif %}>Administrators only</option></select></label>
 <label>Changing and archiving records<select name="perm_edit"><option value="" {% if not perm.edit %}selected{% endif %}>The person who created the record, and administrators</option><option value="admin" {% if perm.edit == 'admin' %}selected{% endif %}>Administrators only (this also stops people deleting their own)</option><option value="all" {% if perm.edit == 'all' %}selected{% endif %}>Everyone who can see the type (deleting stays with the creator and administrators)</option></select></label>
+<label>Personal collections<select name="perm_personal"><option value="" {% if not perm.personal or perm.personal == 'off' %}selected{% endif %}>Off: everything is in the lab collection</option><option value="all" {% if perm.personal == 'all' %}selected{% endif %}>Everyone who can see the type may keep their own records, besides the lab's</option><option value="admin" {% if perm.personal == 'admin' %}selected{% endif %}>Administrators only</option></select></label>
 <p class="muted small">Administrators can always do everything. These rules apply to roles, not to named people, and take effect immediately.</p></fieldset>
 <div class="actions"><button class="primary">Save settings</button></div></form>
 

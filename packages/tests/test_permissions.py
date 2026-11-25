@@ -178,9 +178,10 @@ class TestStoreEnforcement(StoreCase):
             self.store.create("open", BOB, "o", {"link": [rid]})
         self.store.set_archived(other, BOB, True)
         ids = lambda q, **kw: {d["id"] for d in idx.search(q, include_archived=True, **kw)}
-        self.assertEqual(ids("mine", archived_owner="bob"), set())                      # someone else's archived record: not found
-        self.assertEqual(ids("bobs", archived_owner="bob"), {other})                    # their own: found
-        self.assertEqual(ids("mine"), {rid})                                            # no owner given (administrators): everything
+        self.assertEqual(ids("mine", visible=self.store.visibility(BOB)), set())        # someone else's archived record: not found
+        self.assertEqual(ids("bobs", visible=self.store.visibility(BOB)), {other})      # their own: found
+        self.assertEqual(ids("mine", visible=self.store.visibility(ROOT)), {rid})       # administrators: everything
+        self.assertEqual(ids("mine"), {rid})                                            # no rule given (internal use): everything
         self.assertEqual(idx.search("mine"), [])                                        # archived stay out unless asked for
 
     def test_formulas_do_not_count_archived_records_for_others(self):
@@ -279,6 +280,16 @@ class TestUndoAndSchema(StoreCase):
         self.assertEqual(self.store.schemas["secret"]["permissions"], {"read": "admin"})
         self.assertIsNone(self.store.readable(ALICE, self.store.create("secret", ROOT, "s", {})))
 
+
+
+class OneRule(unittest.TestCase):
+    """Reading a record is decided by perms.can_see_record only: the archive rule used anywhere else would miss a change of the rule."""
+    def test_the_archive_rule_is_used_only_by_the_visibility_rule(self):
+        import glob, os
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        files = glob.glob(os.path.join(root, "packages", "shelfblazer", "*.py")) + glob.glob(os.path.join(root, "app", "shelfblazer_app", "*.py"))
+        users = [os.path.relpath(f, root) for f in files if os.path.basename(f) != "perms.py" and "can_see_archived" in open(f, encoding="utf-8").read()]
+        self.assertEqual(users, [])
 
 if __name__ == "__main__":
     unittest.main()

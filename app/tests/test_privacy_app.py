@@ -85,10 +85,24 @@ class TestErasure(Base):
 
     def test_erase_user_command(self):
         from shelfblazer_app import cli
+        run = lambda *args: cli.main(["--instance", self.inst, "erase-user", "--data", self.repo, *args])
         with self.assertRaises(SystemExit):
-            cli.main(["--instance", self.inst, "erase-user", "alice"])     # needs --yes
+            run("alice")                                                    # needs --yes
         self.assertIsNotNone(self.users.get("alice"))
-        cli.main(["--instance", self.inst, "erase-user", "alice", "--yes"])
+        run("alice", "--yes")
+        self.assertIsNone(self.users.get("alice"))
+
+    def test_erase_user_refuses_while_personal_records_are_left(self):
+        from shelfblazer_app import cli
+        run = lambda *args: cli.main(["--instance", self.inst, "erase-user", "--data", self.repo, *args])
+        from test_app import STRAIN
+        self.store.save_schema("strain", dict(STRAIN, permissions={"personal": "all"}), self.users.get("root"))
+        self.store.create("strain", self.users.get("alice"), "mine", {}, personal=True)
+        with self.assertRaises(SystemExit) as e:
+            run("alice", "--yes")
+        self.assertIn("1 personal strain", str(e.exception))
+        self.assertIsNotNone(self.users.get("alice"))
+        run("alice", "--yes", "--leave-personal")                           # the deliberate way
         self.assertIsNone(self.users.get("alice"))
 
 

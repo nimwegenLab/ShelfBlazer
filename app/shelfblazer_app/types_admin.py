@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.requests import Request
 
-from shelfblazer import formula, perms, schema_edit as se
+from shelfblazer import formula, ids, perms, schema_edit as se
 from shelfblazer.store import FIELD_DISPLAYS, TYPE_COLORS, TYPE_ICONS, ValidationError
 
 
@@ -93,7 +93,7 @@ def register(app, c):
     async def type_settings(request: Request, slug: str):
         user, form = await admin_form(request)
         known(slug)
-        perms_in = {k: form.get(f"perm_{k}", "") for k in ("read", "create", "edit")}
+        perms_in = {k: form.get(f"perm_{k}", "") for k in ("read", "create", "edit", "personal")}
         return edit(request, user, slug, lambda s: se.update_settings(s, name=form.get("name", ""), color=form.get("color", ""), icon=form.get("icon", ""),
                                                                     list_columns=form.getlist("columns"), permissions=perms_in),
                     f"type {slug}: settings", "Settings saved.")
@@ -153,7 +153,7 @@ def register(app, c):
         problem = formula.validate(expr, keys)
         if problem:
             return JSONResponse({"error": problem, "value": None})
-        rec = store.records.get(id.strip()) if id.strip() else next((r for r in sorted(store.records.values(), key=lambda r: -r["legacy_id"]) if r["type"] == slug), None)
+        rec = store.records.get(id.strip()) if id.strip() else next((r for r in sorted(store.records.values(), key=ids.sort_key, reverse=True) if r["type"] == slug and not ids.is_personal(r["id"])), None)  # the newest lab record
         if rec is None or rec["type"] != slug:
             return JSONResponse({"error": f"there is no {store.schemas[slug]['name'].lower()} {id.strip() or 'yet'} to try it on", "value": None})
         value, err = formula.evaluate(expr, rec, store, today=store.today())

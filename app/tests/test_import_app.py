@@ -1,7 +1,7 @@
-"""Import from CSV/TSV through the admin pages: upload, columns, check, apply, undo."""
+"""Import from CSV/TSV: upload, columns, check, apply, undo; for administrators and for everyone who may add records of the type."""
 import re, unittest
 
-from test_app import Base
+from test_app import Base, STRAIN
 
 
 class TestImportApp(Base):
@@ -12,31 +12,49 @@ class TestImportApp(Base):
 
     def upload(self, c, content, name="strains.tsv", **extra):
         data = {"csrf_token": self.token(c), **extra}
-        return c.post("/admin/types/strain/import", data=data, files={"file": (name, content, "text/plain")})
+        return c.post("/t/strain/import", data=data, files={"file": (name, content, "text/plain")})
 
     def step(self, c, path, text, mapping, **extra):
         data = {"text": text, **{f"map_{i}": m for i, m in enumerate(mapping)}, **extra}
-        return self.post(c, f"/admin/types/strain/import/{path}", data)
+        return self.post(c, f"/t/strain/import/{path}", data)
 
     @staticmethod
     def hidden_text(page):
         import html
         return html.unescape(re.search(r'<textarea name="text" hidden>(.*?)</textarea>', page, re.S).group(1))
 
-    def test_administrators_only(self):
-        self.assertEqual(self.alice.get("/admin/types/strain/import").status_code, 403)
-        self.assertEqual(self.upload(self.alice, b"name\nx\n").status_code, 403)
-        self.assertEqual(self.step(self.alice, "preview", "name\nx\n", ["name"]).status_code, 403)
-        self.assertEqual(self.step(self.alice, "apply", "name\nx\n", ["name"]).status_code, 403)
-        self.assertIn(self.client().get("/admin/types/strain/import").status_code, (303, 401, 403))
-        self.assertEqual(self.root.get("/admin/types/strain/import").status_code, 200)
-        self.assertEqual(self.root.get("/admin/types/nope/import").status_code, 404)
+    def test_the_pages_need_a_login_and_a_known_type(self):
+        self.assertIn(self.client().get("/t/strain/import").status_code, (303, 401, 403))
+        self.assertEqual(self.root.get("/t/strain/import").status_code, 200)
+        self.assertEqual(self.root.get("/t/nope/import").status_code, 404)
 
-    def test_the_type_page_links_to_the_import(self):
-        self.assertIn('href="/admin/types/strain/import"', self.root.get("/admin/types/strain").text)
+    def test_an_empty_template_with_the_column_titles_of_the_type(self):
+        page = self.alice.get("/t/strain/import").text
+        self.assertIn('href="/t/strain/import/template"', page)
+        r = self.alice.get("/t/strain/import/template")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('filename="strain-import-template.tsv"', r.headers["content-disposition"])
+        self.assertTrue(r.text.startswith("\ufeffName\t") and r.text.endswith("\tNotes\n") and r.text.count("\n") == 1)
+        from shelfblazer import tableimport as ti
+        header, rows, delimiter = ti.parse(ti.decode(r.content + b"my strain\n"))               # the import reads it back, with a row filled in
+        self.assertEqual((delimiter, [cells[0] for _, cells in rows]), ("\t", ["my strain"]))
+        self.assertEqual(header, ti.template_header(self.store, "strain"))
+        self.assertEqual(ti.auto_map(header, ti.targets(self.store, "strain"))[0], "name")      # every title is matched for the person
+        self.assertNotIn("ID", header)
+        self.assertEqual(self.client().get("/t/strain/import/template").status_code in (303, 401, 403), True)
+        self.assertEqual(self.alice.get("/t/nope/import/template").status_code, 404)
+
+    def test_the_old_admin_address_moves(self):
+        r = self.root.get("/admin/types/strain/import", follow_redirects=False)
+        self.assertEqual((r.status_code, r.headers["location"]), (308, "/t/strain/import"))
+
+    def test_the_type_page_and_the_list_link_to_the_import(self):
+        self.assertIn('href="/t/strain/import"', self.root.get("/admin/types/strain").text)
+        self.assertIn('href="/t/strain/import"', self.alice.get("/t/strain").text)
+        self.assertIn('href="/t/strain/import"', self.alice.get("/t/strain/new").text)
 
     def test_posts_need_the_csrf_token(self):
-        r = self.root.post("/admin/types/strain/import/apply", data={"text": "name\nx\n", "map_0": "name"})
+        r = self.root.post("/t/strain/import/apply", data={"text": "name\nx\n", "map_0": "name"})
         self.assertEqual(r.status_code, 403)
 
     def test_a_file_leads_to_the_column_page_with_titles_matched(self):
@@ -54,7 +72,7 @@ class TestImportApp(Base):
             r = self.upload(self.root, content)
             self.assertEqual(r.status_code, 422)
             self.assertIn(word, r.text)
-        self.assertEqual(self.root.post("/admin/types/strain/import", data={"csrf_token": self.token(self.root)}).status_code, 422)
+        self.assertEqual(self.root.post("/t/strain/import", data={"csrf_token": self.token(self.root)}).status_code, 422)
 
     def test_the_check_shows_every_row_and_blocks_on_a_problem(self):
         text = f"ID\tName\tStatus\n\tfine\tok\n{self.s1}\t\tnope\n"
@@ -69,7 +87,7 @@ class TestImportApp(Base):
 
     def test_the_check_offers_the_import_when_all_rows_are_fine(self):
         r = self.step(self.root, "preview", "Name\tGenotype\nnew\tg1\n", ["name", "genotype"])
-        self.assertRegex(r.text, r'formaction="/admin/types/strain/import/apply">Import 1 record</button>')
+        self.assertRegex(r.text, r'formaction="/t/strain/import/apply">Import 1 record</button>')
         self.assertIn("Genotype:</span> g1", r.text)
 
     def test_apply_creates_and_updates_in_one_commit_and_can_be_undone(self):
@@ -77,7 +95,7 @@ class TestImportApp(Base):
         before = len(self.store.records)
         r = self.step(self.root, "apply", text, ["id", "name", "genotype"])
         self.assertEqual(r.status_code, 303)                                                       # redirected: a refresh cannot import again
-        self.assertRegex(r.headers["location"], r"^/admin/types/strain/import/done/[0-9a-f]{12}$")
+        self.assertRegex(r.headers["location"], r"^/t/strain/import/done/[0-9a-f]{12}$")
         r = self.root.get(r.headers["location"])
         self.assertEqual(r.status_code, 200)
         self.assertIn("Import done", r.text)
@@ -94,13 +112,15 @@ class TestImportApp(Base):
         self.assertNotIn(new, self.store.records)
         self.assertEqual(self.store.records[self.s1]["fields"]["genotype"], "g")
 
-    def test_the_done_page_is_admin_only_and_only_for_imports_of_that_type(self):
-        r = self.step(self.root, "apply", "Name\nx\n", ["name"])
+    def test_the_done_page_is_for_the_person_who_ran_it_and_administrators_and_for_that_type(self):
+        r = self.step(self.alice, "apply", "Name\nx\n", ["name"])
         url = r.headers["location"]
-        self.assertEqual(self.alice.get(url).status_code, 403)
+        self.assertEqual(self.alice.get(url).status_code, 200)
+        self.assertEqual(self.root.get(url).status_code, 200)
+        self.assertEqual(self.client("bob").get(url).status_code, 404)
         self.assertEqual(self.root.get(url.replace("/strain/", "/plasmid/")).status_code, 404)
-        self.assertEqual(self.root.get("/admin/types/strain/import/done/zzzzzzz").status_code, 404)
-        self.assertEqual(self.root.get("/admin/types/strain/import/done/" + self.store.git("rev-list", "--max-parents=0", "HEAD").strip()[:12]).status_code, 404)  # not an import commit
+        self.assertEqual(self.root.get("/t/strain/import/done/zzzzzzz").status_code, 404)
+        self.assertEqual(self.root.get("/t/strain/import/done/" + self.store.git("rev-list", "--max-parents=0", "HEAD").strip()[:12]).status_code, 404)  # not an import commit
 
     def test_apply_with_a_problem_changes_nothing(self):
         before = dict(self.store.records)
@@ -131,6 +151,60 @@ class TestImportApp(Base):
             self.assertRegex(r.text, r'<select name="map_1"[^>]*>.*?<option value="genotype" selected>')
         r = self.upload(self.root, "Name\tGenotype\nMüller\tg\n".encode("cp1252"))
         self.assertIn("Müller", self.hidden_text(r.text))
+
+
+class TestImportByEveryone(Base):
+    """A person who is not an administrator: new rows into the lab collection (where the type lets everybody add) and updates of what they may edit."""
+    def setUp(self):
+        super().setUp()
+        self.alice, self.bob, self.root = self.client("alice"), self.client("bob"), self.client("root")
+        self.mine = self.create("alice", name="alice's strain", genotype="g")
+        self.bobs = self.create("bob", name="bob's strain", genotype="g")
+
+    def step(self, c, path, text, mapping, **extra):
+        return self.post(c, f"/t/strain/import/{path}", {"text": text, **{f"map_{i}": m for i, m in enumerate(mapping)}, **extra})
+
+    def test_new_rows_go_into_the_lab_collection_owned_by_the_importer(self):
+        r = self.step(self.alice, "apply", "Name\nfresh\n", ["name"])
+        self.assertEqual(r.status_code, 303)
+        rid = [i for i, rec in self.store.records.items() if rec["name"] == "fresh"][0]
+        self.assertEqual(self.store.records[rid]["created_by"], self.uid("alice"))
+        self.assertEqual(self.alice.get(r.headers["location"]).status_code, 200)
+
+    def test_an_update_needs_the_right_to_edit_that_record(self):
+        text = f"ID\tGenotype\n{self.mine}\tnew\n{self.bobs}\tnew\n"
+        r = self.step(self.alice, "preview", text, ["id", "genotype"])
+        self.assertIn("you may not change " + self.bobs, r.text)
+        self.assertNotIn("/import/apply\">Import", r.text)                                    # one problem stops the whole file
+        r = self.step(self.alice, "apply", text, ["id", "genotype"])
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(self.store.records[self.mine]["fields"]["genotype"], "g")
+        r = self.step(self.alice, "apply", f"ID\tGenotype\n{self.mine}\tnew\n", ["id", "genotype"])
+        self.assertEqual(r.status_code, 303)
+        self.assertEqual(self.store.records[self.mine]["fields"]["genotype"], "new")
+        self.assertEqual(self.step(self.root, "apply", f"ID\tGenotype\n{self.bobs}\tby admin\n", ["id", "genotype"]).status_code, 303)
+
+    def test_a_record_the_person_cannot_see_looks_missing(self):
+        self.store.set_archived(self.bobs, self.users.get("bob"), True)
+        r = self.step(self.alice, "preview", f"ID\tGenotype\n{self.bobs}\tx\n", ["id", "genotype"])
+        self.assertIn(f"{self.bobs} does not exist", r.text)
+        r = self.step(self.alice, "preview", "Name\nbob's strain\n", ["name"])               # nor is its name a duplicate she is told about
+        self.assertNotIn(self.bobs, r.text)
+
+    def test_a_type_only_administrators_may_add_to_refuses_everyone_else(self):
+        self.store.save_schema("strain", dict(STRAIN, permissions={"create": "admin"}), self.users.get("root"))
+        self.assertEqual(self.alice.get("/t/strain/import").status_code, 403)
+        self.assertEqual(self.step(self.alice, "apply", "Name\nx\n", ["name"]).status_code, 403)
+        self.assertEqual(self.root.get("/t/strain/import").status_code, 200)
+        self.assertNotIn("/t/strain/import", self.alice.get("/t/strain").text)                 # no button either
+
+    def test_a_hidden_type_is_not_found(self):
+        self.store.save_schema("strain", dict(STRAIN, permissions={"read": "admin"}), self.users.get("root"))
+        self.assertEqual(self.alice.get("/t/strain/import").status_code, 404)
+        self.assertEqual(self.step(self.alice, "apply", "Name\nx\n", ["name"]).status_code, 404)
+
+    def test_the_posts_need_the_csrf_token(self):
+        self.assertEqual(self.alice.post("/t/strain/import/apply", data={"text": "name\nx\n", "map_0": "name"}).status_code, 403)
 
 
 if __name__ == "__main__":

@@ -1,13 +1,13 @@
 {% extends "base.html" %}{% block mainattr %} data-hue="{{ type_hue(slug) }}"{% endblock %}{% block title %}Import {{ schema.name|lower }}s: check{% endblock %}
-{% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <a href="/admin/types">Types</a> · <a href="/admin/types/{{ slug }}">{{ schema.name }}</a></p>
+{% block body %}{% include "_import_nav.html" %}
 <div class="hero"><div><span class="typechip">{{ icon(slug) }}{{ schema.name }}s</span><h1>Import records: check</h1></div></div>
 <p class="lead"><strong>{{ res.created }}</strong> new · <strong>{{ res.updated }}</strong> updated · {{ res.unchanged }} already as in the file · <strong>{{ res.errors }}</strong> with problems{% if res.warnings %} · {{ res.warnings }} with a warning{% endif %}</p>
 {% if res.errors %}<div class="flash err">Nothing was imported. Fix the rows marked below in the file and upload it again, or change which column is which.</div>
 {% elif not res.created and not res.updated %}<div class="callout">Nothing to import: every row is already as in the file.</div>{% endif %}
-<form method="post" class="inline importact"><input type="hidden" name="csrf_token" value="{{ csrf }}"><textarea name="text" hidden>{{ text }}</textarea>
+<form method="post" class="inline importact"><input type="hidden" name="csrf_token" value="{{ csrf }}"><textarea name="text" hidden>{{ text }}</textarea><input type="hidden" name="collection" value="{{ collection }}">
 {% for m in mapping %}<input type="hidden" name="map_{{ loop.index0 }}" value="{{ m or '' }}">{% endfor %}<input type="hidden" name="remapped" value="1">
-{% if not res.errors and (res.created or res.updated) %}<button class="primary" formaction="/admin/types/{{ slug }}/import/apply">Import {{ res.created + res.updated }} record{{ '' if res.created + res.updated == 1 else 's' }}</button> {% endif %}
-<button formaction="/admin/types/{{ slug }}/import">Change the columns</button> <a class="btn" href="/admin/types/{{ slug }}/import">Choose another file</a></form>
+{% if not res.errors and (res.created or res.updated) %}<button class="primary" formaction="/t/{{ slug }}/import/apply">Import {{ res.created + res.updated }} record{{ '' if res.created + res.updated == 1 else 's' }}</button> {% endif %}
+<button formaction="/t/{{ slug }}/import">Change the columns</button> <a class="btn" href="/t/{{ slug }}/import{{ '?c=mine' if collection == 'mine' }}">Choose another file</a></form>
 <div class="tablewrap"><table><thead><tr><th>Line</th><th>What happens</th><th>ID</th><th>Name</th><th>Changes</th><th>Problems</th></tr></thead><tbody>
 {% for e in shown %}<tr{% if e.action == 'error' %} class="importerr"{% endif %}><td class="muted">{{ e.line }}</td>
 <td>{% if e.action == 'create' %}new{% elif e.action == 'update' %}update{% elif e.action == 'unchanged' %}<span class="muted">no change</span>{% else %}<span class="badge">problem</span>{% endif %}</td>

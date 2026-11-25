@@ -40,7 +40,7 @@ class TestRecordsApi(Base):
 
     def test_item_shape(self):
         item = self.c.get(f"/api/records?ids={self.p1}").json()["results"][0]
-        self.assertEqual(set(item), {"id", "name", "type", "type_name", "hue", "archived"})
+        self.assertEqual(set(item), {"id", "label", "name", "type", "type_name", "hue", "archived"})
         self.assertEqual((item["type"], item["type_name"], item["name"], item["archived"]), ("plasmid", "Plasmid", "pUA66", False))
         self.assertEqual(item["hue"], 2)
 

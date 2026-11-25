@@ -209,8 +209,8 @@ def update_settings(schema, name=None, color=None, list_columns=None, permission
         visible = [f["key"] for f in _fields(schema) if not f.get("hidden") and f["key"] != "name" and f["key"] not in SYSTEM_KEYS and f["type"] != "file"]
         cols = ["id", "name"] + [k for k in visible if k in wanted] + [c for c in LIST_EXTRA_COLUMNS if c in wanted]
         schema["list_columns"] = cols
-    if permissions is not None:
-        clean = {k: v for k, v in permissions.items() if v}
+    if permissions is not None:                  # the settings given replace those keys only; an empty value means the default
+        clean = {k: v for k, v in {**schema.get("permissions", {}), **permissions}.items() if v}
         if clean:
             schema["permissions"] = clean
         else:
@@ -242,7 +242,7 @@ def validate_schema(slug, schema, others, old=None):
     if "icon" in schema and schema["icon"] not in TYPE_ICONS:
         problems.append("unknown icon")
     perms = schema.get("permissions", {})
-    allowed = {"read": ("all", "admin"), "create": ("all", "admin"), "edit": ("owner", "admin", "all")}
+    allowed = {"read": ("all", "admin"), "create": ("all", "admin"), "edit": ("owner", "admin", "all"), "personal": ("off", "all", "admin")}
     for action, value in perms.items():
         if action not in allowed or value not in allowed[action]:
             problems.append(f"unknown permission setting {action}={value}")

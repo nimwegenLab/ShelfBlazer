@@ -3,7 +3,7 @@
 <p><strong>{{ ids|length }}</strong> selected · you can edit <strong>{{ n_edit }}</strong>{% if n_skip %} · <strong>{{ n_skip }}</strong> will be skipped (only their owner or an administrator can edit them){% endif %}.</p>
 {% if errors %}<div class="flash err">{% for k, v in errors.items() %}{{ v }} {% endfor %}</div>{% endif %}
 <form method="post" action="/t/{{ slug }}/bulk/apply" class="edit bulkform"><input type="hidden" name="csrf_token" value="{{ csrf }}">
-{% for i in ids %}<input type="hidden" name="ids" value="{{ i }}">{% endfor %}
+{% for i in ids %}<input type="hidden" name="ids" value="{{ i }}">{% endfor %}<input type="hidden" id="link-scope" value="{{ 'lab+mine' if ids and is_personal(ids[0]) else 'lab' }}">
 <fieldset><legend>What should happen?</legend>
 <label class="chk"><input type="radio" name="action" value="set" {% if values.get('action', 'set') == 'set' %}checked{% endif %}> Set a field to one value</label>
 {% if multi %}<label class="chk"><input type="radio" name="action" value="add" {% if values.get('action') == 'add' %}checked{% endif %}> Add one option or link to a field</label>

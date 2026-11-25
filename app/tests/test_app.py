@@ -88,6 +88,16 @@ def tags(page, tag, **want):
     return out
 
 
+def leaked_keys(page):
+    """The owner-qualified IDs (ST-P3~U7F3K2QA) a person could read in this page: in its text or in a title, aria-label, alt or placeholder.
+    Addresses, values and data attributes may hold them; people see ST-P3 or ST-P3[Alice] (design 17.2)."""
+    import re
+    from shelfblazer import ids
+    page = re.sub(r"<(script|style)\b.*?</\1>|<textarea\b[^>]*\bhidden\b[^>]*>.*?</textarea>", " ", page, flags=re.S | re.I)
+    seen = re.findall(r'\b(?:title|aria-label|alt|placeholder)="([^"]*)"', page) + re.split(r"<[^>]+>", page)
+    return sorted({m.group(0) for t in seen for m in ids.IN_TEXT.finditer(t) if m.group(4)})
+
+
 class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

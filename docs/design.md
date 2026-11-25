@@ -30,7 +30,34 @@ This file keeps the original design and the decisions; where the build differs f
   list of storage places for chemicals/reagents, and a free-text `storage` field kept from the import.
 - No per-field permissions, no workflows, no ordering/budget/equipment modules.
 - No formal cross-type relations except the generic `ref` field (section 4.4).
-- No in-app import UI (migration is a script). No label/QR printing (possible later).
+- No label/QR printing (possible later). Reading barcodes is built (the *Scan* button); printing them is not.
+  (v1 had no in-app import either; the CSV/TSV import is built (D44), and migrating from another system is still a script, section 13.)
+
+The storage non-goal is deliberate, not a gap. A freezer/rack/box model is only useful if someone keeps it true, and for a group of
+fewer than about 20 people that upkeep costs more than the time saved looking for a tube. A record carries a short place
+(`Box 2 Well G3`) and the physical item carries its ID.
+
+### Related work (checked November 2026)
+This comparison was made after the design, from each project's repository page and README only (the tools were not installed or run),
+so "not stated" below means the README does not say, not that the feature is absent.
+
+| Tool | Storage | What it is for | Why it is not a drop-in answer here |
+|---|---|---|---|
+| Onyo | Text files and folders in git (YAML) | IT assets: where a device is, who has it | Command line only; no web interface, accounts or permissions stated; the GitHub repository is archived and development moved elsewhere |
+| smallFactory | Plain files in git (YAML/JSON) | Parts, bills of materials and revisions for small hardware teams | Has a phone-friendly web UI, QR labels and inventory, but no login, roles or permissions stated; custom fields rather than user-defined item types; fixed categories (entities, BOMs, revisions) |
+| eLabFTW | SQL database | Electronic lab notebook with a resource database (reagents, plasmids, cell lines) | The closest lab fit and a large community; a notebook-first system with a database behind it, so records are not plain files and history is not git |
+| Part-DB, InvenTree | SQL database | Electronic components and manufacturing stock | Part-centred; storage locations, labels and event logs, but no lab item types or sequence search stated |
+
+What this leaves open is a narrow niche: **git as the only store of record, plus a multi-user web interface with accounts,
+per-type permissions and user-defined item types**, for a small group that wants records it can read, diff and back up as files.
+Neither git-based tool covers that, and the database-backed ones, however capable, give up the plain-file property.
+Choosing ShelfBlazer over them is justified by that property, not by features: if a group does not need its records as
+files in git, an established tool with a community is the safer choice.
+
+**Where it is suited:** groups of about 5 to 30 people and a few thousand records; labs that already keep identifiers on tubes and plates;
+people who want a record's full history and an archive instead of deletion.
+**Where it is not:** thousands of concurrent users or a very large record count (one server process, in-memory index),
+physical storage mapping, electronic notebook features, and any setting that needs a vendor-supported product.
 
 ---
 
@@ -79,6 +106,10 @@ This file keeps the original design and the decisions; where the build differs f
 | D39 | **Layer 1 built (2026-11-10); layers 2-4 proposed.** Personal data stays out of what git keeps forever: opaque user IDs in records and commits (names only in `users.json`), encrypted personal fields with one key per person (erasure = delete the key), a tested purge procedure for accidents, backups that follow the same rules. See section 16 | Security audit (2026-11-10); user asked for the design |
 | D40 | **Archive replaces delete (built 2026-11-11).** Git keeps every version, so "delete" only hid the record and promised more than it did. One state remains, `archived`: the record stays in the repository, and only its owner and administrators can see, search, open, link to or download it; the owner or an administrator restores it. Removed: the delete button and route, bulk delete, `perms.can_delete`, `Store.delete`. History links (`/r/<ID>/at/<commit>`) show a record as a commit saved it, read-only, with that commit's type definition. Real removal (history rewrite) stays the planned `shelfblazer purge` CLI (16.4), not a button: it changes every later commit ID, needs a force-push, and cannot promise erasure on GitHub. A type that still has records, archived ones included, cannot be removed until purge exists | User decision |
 | D41 | **History links (built 2026-11-11).** Each History entry on a record page, except the newest (the record as it is now), opens `/r/<ID>/at/<commit>`: the record as that commit saved it, read-only, rendered with the type definition from the same commit. Read with `git show` (no checkout, no branch, no extra storage); the commit must have touched that record's file, so the URL cannot be used to read anything else. Same visibility as the record today (an archived record's versions: owner and administrators). Left out of an old version: calculated fields (they depend on today's date and on other records) and attachment contents (names only). Not built: diff against the previous version, a "restore this version" button, more than 30 entries. Purge (16.4) changes commit IDs, so old links to versions stop working | User request |
+| D42 | **Personal collections (proposed 2026-11-22, decided 2026-11-24, built 2026-11-25 for 0.3).** Each type can have, besides the lab collection, one personal collection per person, using the type's own definition (people never manage types); off unless the type's `permissions.personal` allows it. Personal IDs are `ST-P17`, counted by each person from 1 (Alice's `ST-P1` and Bob's are different records; what is unique is the ID with its owner, see D45). An item moves from a personal collection to the lab one (new lab ID, the old ID kept as an alias), never back, after a warning on the page with the button (also for bulk; a first page only when a linked item needs a decision); the personal items it links to move with it, or are relinked to a matching lab item. Edit rights as today (owner or administrator). Each person has a per-type checkbox "Visible to others" (checked by default; unchecked: only the owner and administrators see the items in the app; never called "private", because the repository and its backups still hold everything). A lab record cannot link to a personal item, and a personal item cannot link to another person's. Interface: "My collection" as a second part of the sidebar, a collection choice on new records, one search table per collection. See section 17 | User decision |
+| D43 | **Lab records into a personal collection: an administrator command (built 2026-11-24).** The app still never moves a lab item to a personal collection (D42). For the cases where lab records really are one person's own (a person's boxes imported with the lab stock), `shelfblazer move-to-personal <username> <IDs or ranges> [--yes]` moves that person's own records, in one commit by the maintenance account: new personal IDs, the lab ID kept in `former_ids` (it still opens the record), files and mentions follow, the lab numbers stay unused. Refused for someone else's records, types without personal collections, and records that something staying links to. Preview without `--yes` | User request |
+| D44 | **Table import for everyone who may add records (built 2026-11-24).** The CSV/TSV import (upload, columns, check, one undoable commit) moves from the type admin page to `/t/<type>/import`, linked as *Import…* beside *+ New* on list pages and from the new-record form. It follows the rules of the record form: a person imports into the collections they may add to (lab collection: the type's `create`; own collection: `permissions.personal`), a row with an ID updates that record only if they may edit it, a record they may not see answers "does not exist" and is never named as a duplicate. The page of a finished import is for the person who ran it and administrators. No separate import permission | User decision |
+| D45 | **Personal numbers are per person (built 2026-11-25).** Each person counts their own personal items from 1 (`ST-P1` for Alice and for Bob); the key of an item is the ID with its owner (`ST-P1~U7F3K2QA`), used in file names, links, addresses and history; people see `ST-P1`, or `ST-P1[Alice]` for someone else's. A short personal ID is read for the person it is typed by or written for. Replaces the shared counter of D42: people did not like to see other people's numbers in theirs. Section 17.2 | User request |
 
 ---
 
@@ -385,3 +416,113 @@ generated from the type definitions (`personal`, `retention`) keeps this in sync
 | Layer 3 (purge) | With the backup job | Purge of a record and of a file tested on a copy, backups updated |
 | Layer 2 (personal fields, retention) | With the orders extension | Erasing a person makes their personal fields unreadable in an old clone; retention job tested |
 
+
+---
+
+## 17. Personal collections (built, D42)
+
+Status: proposed 2026-11-22, decided 2026-11-24, built 2026-11-25 on the `collections` branch for 0.3 (steps 0 to 4 of 17.8; step 3 tried on a copy of real data on 2026-11-25, desktop and phone). Where this text and the
+code differ, the code and the decisions D42, D43 and D45 win; the text below keeps the reasoning.
+
+### 17.1 Model
+- For each record type there is the **lab collection** (what exists today) and one **personal collection** per person. A new person's
+  personal collections are empty; they fill them by creating items, or by importing a table into them.
+- A personal item uses the **same type definition** as the lab collection: same fields, options, validation, formulas. People do not
+  administer types (types stay admin-only, D30).
+- An administrator enables personal collections per type with `permissions.personal`: `off` (the default), `all`, or `admin` (only
+  administrators keep personal items). A hidden type (`read: admin`) has no personal collections.
+- **Edit rights are those of today:** the owner or an administrator changes, archives and restores a personal item, whatever the type's
+  `edit` setting says (`edit: all` does not open someone's personal items to others).
+
+### 17.2 IDs
+- A personal item has the ID `<PREFIX>-P<n>`, for example `ST-P17`, **counted by each person from 1** (a counter per type and person,
+  `"strain.P.<user ID>"` in `config/counters.yaml`), separate from the lab counter, so personal items never use up lab numbers.
+  `ST-P1` of Alice and `ST-P1` of Bob are different records: what is unique is the ID together with its owner.
+- **The key.** Files, links, addresses and history need something unique, so the key of a personal item carries its owner's opaque user ID:
+  `ST-P17~U7F3K2QA` (`data/strain/ST-P17~U7F3K2QA.md`, `data/files/ST-P17~U7F3K2QA/`, `/r/ST-P17~U7F3K2QA`, and in `fields` and `former_ids`).
+  The user ID is already in every record (`created_by`), so no new personal data enters the repository. Lab IDs have no owner part.
+- **What people see and type: the short form.** `ST-P17` for your own, `ST-P17[Alice]` for someone else's. A short personal ID is read for
+  the person it is written by or for: typed in a link field or a note of a personal item, it means that item's owner's; typed in the search
+  or the address bar, it means yours (and when you have none, the search lists everybody's `ST-P17`). Pages are written with keys, and one
+  module (`idlabels.py`) turns the keys in the visible text of a finished page into labels; a test asserts no key is readable on any page.
+- Whether an item is personal is derived from the ID, not stored in a second field. One module parses and formats IDs for the whole code
+  base, the browser picker included: `([A-Z]{2})-(P)?(\d+)(~owner)?` with the owner only after a `P`. The existing pattern does not match
+  `ST-P17`, so it never links to `ST-17` by mistake.
+- Sorting by ID uses (collection, number, owner): `ST-17` and `ST-P17` are different records with the same number.
+- Exports write your own personal IDs short (an import reads them as yours) and other people's with their owner.
+
+### 17.3 Visibility
+- Each person has, **per type** (not per item), a checkbox **"Visible to others"** for their personal collection. Checked (the default):
+  everybody who can read the type sees, searches and opens the items, read-only. Unchecked: only the owner and administrators do. The choice
+  is stored with the account in `users.json` (outside git) and can be changed at any time.
+- **The word "private" is not used** in the interface or the documentation. Unchecked only hides the items in the app: administrators, the
+  data repository and its backups still hold everything. The checkbox's help text says so.
+- **Unchecking is a convenience, not access control.** Anyone with access to the repository or its backups can read every personal item,
+  whatever the checkbox says. Nothing that must stay confidential belongs in a personal collection.
+- Every read path applies visibility through one rule, `perms.can_see_record()` (today the rule is written in several places): global and
+  per-type search, ID jump, lists, record pages, Referenced by, formulas, file downloads, Recent activity, history links, exports, scan.
+  An item that is not visible answers 404 like a missing record. A test requests every read path for a hidden item.
+- Archived personal items follow D40 (owner and administrators only), whatever the collection's visibility.
+
+### 17.4 Links
+- **A lab record cannot link to a personal item** (ref fields reject it; the picker does not offer it). The collection's visibility can
+  change at any time, so such a link could break for everybody else.
+- **A personal item links to lab items and to its owner's own personal items only**, never to another person's personal items, visible or
+  not, for the same reason.
+- Text in notes that mentions a personal ID the viewer cannot see is shown as plain text, not as a link.
+
+### 17.5 Moving an item to the lab collection
+- Who: the owner or an administrator; only an administrator when the type's `create` is `admin`.
+- **Linked personal items move too.** A lab record cannot link to a personal one, so moving an item also moves the personal items it links
+  to, and the ones those link to in turn. When a lab item looks the same (same name, or the same sequence for types with a sequence
+  search field), the preview offers to link to that lab item instead of moving the personal one; the person chooses per item.
+- **One page with the warning and the button, for one item and for the bulk action alike:** the new lab ID or IDs, the linked items that move
+  along or are relinked, validation problems against the current type definition, lab items with a similar name, and the consequences (the
+  move cannot be undone by the user, the tube needs a new label, the item and its history become part of the lab collection and visible to
+  everybody who can read the type), and the button that names what moves ("Move 12 strains and 3 plasmids to the lab collection"). A first
+  page comes before it only when a linked personal item has a look-alike in the lab, to ask what to do about it (decided 2026-11-25: the
+  two pages were redundant when there was nothing to decide).
+- What happens, in one commit (one commit for a bulk move too): the next lab number (`ST-1262`), `git mv` of the record file, move of
+  `data/files/ST-P17~U7F3K2QA/`, every mention of it in all records rewritten (a short mention in the notes of its owner's items too),
+  `former_ids: [ST-P17~U7F3K2QA]` kept in the record. `/r/ST-P17` (for its owner) and the key redirect to the new ID, and the history reads across the rename (`_rel_paths` includes `former_ids`). The owner (`created_by`) is unchanged.
+- **No way back:** nothing in the app moves a lab item to a personal collection (an administrator can, from the command line: D43). Only an administrator can undo a move (`git revert` of its commit);
+  the lab number then stays unused (allowed by D5). The bulk undo of D28 does not apply to moves for other people.
+
+### 17.6 Interface
+Two places rather than a switch on one list, because most people are not expert users.
+- **Words:** "Lab collection" and "My collection" (singular: each holds several types). The lists are "Strains", "My strains" and
+  "<Name>'s strains". Not "group" (reserved for permission groups) and never "private".
+- **Sidebar and phone menu:** the types as today (the lab collection), then a heading **My collection** with only the types that allow
+  personal items.
+- **A personal list is recognisable at a glance:** title "My strains", the person's avatar, and a line under the title ("Only in your
+  collection. Visible to others: yes · change"). Behind it, the lab list and the personal list are the same page and the same record query.
+- **New record:** the form starts with "Add to: Lab collection / My collection". Lab collection is the default; New from a personal list
+  picks My collection.
+- **Record page of a personal item:** a band at the top ("In <Name>'s collection, not in the lab collection"); for the owner and
+  administrators, a "Move to the lab collection" button.
+- **Global search:** one table per collection and type with hits: the lab ("Strains"), yours ("My strains"), then other people's visible
+  collections by name ("<Name>'s strains").
+- **Search in a type's list:** the lab list shows lab results only (sorting, pages and bulk selection work on one table), then one line when
+  personal collections have hits ("Also in collections: yours (2), <Name>'s (3)") linking to the global search. A personal list searches
+  that collection only.
+- **Other people's collections:** not in the sidebar; a line at the end of a personal list ("Collections of others: <Name> (12), <Name> (4)").
+- **Home:** the lab tiles as today, then a "My collection" row with its counts.
+- **Me page:** the "Visible to others" checkbox for each type that allows personal items.
+
+### 17.7 Other effects to handle
+- Table import: a choice of target collection, for everyone who may add records (D44).
+- Bulk edit works within one collection; change owner stays admin-only.
+- Type admin: options in use and "the type still has records" count personal items too.
+- Scan finds the personal items the viewer may see.
+- People leaving: `erase-user` refuses while the person has personal items (archived ones included): an administrator moves them to the lab collection or archives them first. A reassignment does not exist, because the owner is part of the ID. `--leave-personal` erases anyway; the items then stay, for administrators only (the owner's choice of visibility goes with the account).
+- `rename_prefix` renames `ST-P17` to `BS-P17` as well (keys and short mentions).
+- **No downgrade** once a personal item exists: earlier versions do not understand `ST-P17` (an Upgrading note in the CHANGELOG).
+
+### 17.8 Order of work (on a branch)
+| Step | Done when |
+|---|---|
+| 0. Preparation, no visible change: one ID module, one visibility rule (the search index included), one record query for lists, bulk, export, the picker and Home, "rewrite mentions of IDs" shared with `rename_prefix` | Existing tests pass, plus a test that requests every read path for a record the viewer may not see |
+| 1. Core: `ST-P<n>` IDs and counter, `permissions.personal`, per-person visibility, link rules, creating into a collection | That test passes for a hidden personal item; the lab counter does not move |
+| 2. Move to the lab collection (single and bulk, one page with the warning, linked items moved or relinked) | Round trip with files; old ID and old links open the record; history across the move; admin undo |
+| 3. Interface (section 17.6) and table import into a personal collection | Tried on a copy of real data, on a phone and a desktop. Done |
+| 4. Docs: README, CHANGELOG (Upgrading), this section marked built | Done |

@@ -63,3 +63,22 @@ def short_storage(text):
     show_freezer = len(parts) > 1 and len(freezers) > 1      # only when the locations are in different freezers
     out = [x for x in (_one(p, show_freezer) for p in parts) if x]
     return "; also ".join(out) if out else text
+
+
+def storage_chunks(text):
+    """The short storage text in pieces that should not be broken inside, for wrapping in narrow list columns:
+    'Box 2 Well C5 (Freezer 1 -80); also Box 2 Well A7 (Freezer 2 -80)' ->
+    ['Box 2 Well C5', '(Freezer 1 -80);', 'also Box 2 Well A7', '(Freezer 2 -80)']. Anything else is one piece."""
+    if not text or not isinstance(text, str):
+        return [text] if text else []
+    locations = text.split("; also ")
+    out = []
+    for i, loc in enumerate(locations):
+        m = re.match(r"^(.*\S) (\([^()]*\))$", loc)
+        pieces = [m.group(1), m.group(2)] if m else [loc]
+        if i:
+            pieces[0] = "also " + pieces[0]
+        if i < len(locations) - 1:
+            pieces[-1] += ";"
+        out += pieces
+    return out

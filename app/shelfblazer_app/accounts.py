@@ -105,6 +105,17 @@ def register(app, c):
         need_user(request)
         return render(request, "me.html")
 
+    @app.post("/me/collections")
+    async def me_collections(request: Request):
+        """"Visible to others" for each type of the person's personal collections (the box ticked = visible)."""
+        u = need_user(request)
+        form = await request.form()
+        check_csrf(request, form)
+        for slug, _ in c.my_types(u):
+            users.set_collection_visible(u["username"], slug, f"visible_{slug}" in form)
+        flash(request, "Saved.")
+        return RedirectResponse("/me#collections", 303)
+
     @app.post("/me/password")
     async def me_password(request: Request):
         u = need_user(request)

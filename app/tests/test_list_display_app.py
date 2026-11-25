@@ -73,9 +73,15 @@ class TestRowsPrefsStorageAndForm(Base):
         self.assertIn(">Box 2 Well G3<", lst)
         self.assertIn(f'title="{FULL}"'.replace("'", "&#39;"), lst)                  # full path as tooltip
         self.assertNotIn(f">{FULL.replace(chr(39), '&#39;')}<", lst)
-        self.assertIn('class="clamp storage"', lst)                                      # kept on one line
+        self.assertIn('class="clamp storage"', lst)                                      # one line on cards; pieces that wrap in tables
         self.assertRegex(read("style.css"), r"\.clamp\.storage\{[^}]*white-space:nowrap")
+        self.assertRegex(read("style.css"), r"td \.clamp\.storage\{[^}]*white-space:normal;max-width:")
+        self.assertRegex(read("style.css"), r"\.storage \.u\{white-space:nowrap\}")
         self.assertIn(">Box 2 Well G3<", c.get("/t/strain?view=cards").text)
+        two = "Room 6035 / Freezer 1 -80 / r / box 'Strains collec (box 2)' / C5; also: Room 6035 / Freezer 2 -80 / r / box 'Freezer2 (box 2)' / A7"
+        self.create("alice", name="s2", storage=two)
+        self.assertIn('<span class="u">Box 2 Well C5</span> <span class="u">(Freezer 1 -80);</span> '
+                      '<span class="u">also Box 2 Well A7</span> <span class="u">(Freezer 2 -80)</span>', c.get("/t/strain").text)
         rec = c.get(f"/r/{rid}").text
         self.assertIn("Box 2 Well G3", rec)
         self.assertIn('class="muted small fullpath"', rec)

@@ -1,10 +1,10 @@
 {% extends "base.html" %}{% block mainattr %} data-hue="{{ type_hue(slug) }}"{% endblock %}{% block title %}Import {{ schema.name|lower }}s: columns{% endblock %}
-{% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <a href="/admin/types">Types</a> · <a href="/admin/types/{{ slug }}">{{ schema.name }}</a></p>
+{% block body %}{% include "_import_nav.html" %}
 <div class="hero"><div><span class="typechip">{{ icon(slug) }}{{ schema.name }}s</span><h1>Import records: columns</h1></div></div>
 <p><strong>{{ n }}</strong> data row{{ '' if n == 1 else 's' }}, {{ header|length }} column{{ '' if header|length == 1 else 's' }} ({{ delimiter }}-separated). Say what each column holds; columns set to "ignore" are not imported.</p>
-<form method="post" action="/admin/types/{{ slug }}/import/preview" class="edit importmap"><input type="hidden" name="csrf_token" value="{{ csrf }}">
-<textarea name="text" hidden>{{ text }}</textarea>
+<form method="post" action="/t/{{ slug }}/import/preview" class="edit importmap"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+<textarea name="text" hidden>{{ text }}</textarea><input type="hidden" name="collection" value="{{ collection }}">
 <div class="tablewrap"><table><thead><tr><th>Column in the file</th><th>Examples</th><th>Is</th></tr></thead><tbody>
 {% for h in header %}{% set i = loop.index0 %}<tr><td><strong>{{ h or '(no title)' }}</strong></td><td class="muted">{{ samples[i]|join(' · ') }}</td>
 <td><select name="map_{{ i }}" aria-label="What column {{ h }} holds"><option value="">ignore</option>{% for key, label in targets %}<option value="{{ key }}"{% if mapping[i] == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></td></tr>{% endfor %}</tbody></table></div>
-<div class="actions"><button class="primary">Check the rows</button> <a class="btn" href="/admin/types/{{ slug }}/import">Choose another file</a></div></form>{% endblock %}
+<div class="actions"><button class="primary">Check the rows</button> <a class="btn" href="/t/{{ slug }}/import{{ '?c=mine' if collection == 'mine' }}">Choose another file</a></div></form>{% endblock %}

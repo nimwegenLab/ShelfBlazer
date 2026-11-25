@@ -6,20 +6,20 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from starlette.datastructures import UploadFile
 
-from shelfblazer import fields as fieldrules, perms, uploads
+from shelfblazer import fields as fieldrules, ids, perms, uploads
 from shelfblazer.auth import UID_RE
 from shelfblazer.store import Forbidden, NotFound, ValidationError
 from . import scan
 from .files import FILES_PER_REQUEST
 
-UID_IN_TEXT = re.compile(r"\b" + UID_RE.pattern.strip("^$") + r"\b")   # user IDs in commit messages ("ST-12: update by U7F3K2QA"), shown as names
+UID_IN_TEXT = re.compile(r"(?<!~)\b" + UID_RE.pattern.strip("^$") + r"\b")   # user IDs in commit messages ("ST-12: update by U7F3K2QA"), shown as names
 
 
 def register(app, c):
     store, users = c.store, c.users
     need_user, render, display, flash, check_csrf = c.need_user, c.render, c.display, c.flash, c.check_csrf
     computed_cell, present, form_descriptors, picture = c.computed_cell, c.present, c.form_descriptors, c.picture
-    edit_refusal = c.edit_refusal
+    edit_refusal, collections_for = c.edit_refusal, c.collections_for
 
     async def read_form(request, slug):
         """The record form: (form, raw field values, files chosen in File fields, new options/places typed: key -> name)."""
@@ -106,8 +106,11 @@ def register(app, c):
     @app.get("/r/{rid}", response_class=HTMLResponse)
     async def record(request: Request, rid: str):
         u = need_user(request)
-        if store.canonical_id(rid) != rid:                           # an ID with a former prefix of its type (ST-12 after ST became BS)
-            return RedirectResponse(f"/r/{store.canonical_id(rid)}", 302)
+        key = store.resolve(rid, u["uid"])                           # a former prefix (ST-12 after ST became BS), a short personal ID (yours), a moved record's old ID
+        if ids.is_personal(rid) and not ids.owner_of(rid) and store.readable(u, key) is None:
+            return RedirectResponse(f"/?q={rid}", 302)               # ST-P3 and you have no such record: whose is it? the search says
+        if key != rid:
+            return RedirectResponse(f"/r/{key}", 302)
         rec = store.readable(u, rid)
         if not rec:
             raise NotFound(rid)
@@ -144,33 +147,39 @@ def register(app, c):
                       author=display(v["author"]), subject=UID_IN_TEXT.sub(lambda m: display(m.group(0)), v["subject"]))
 
     @app.get("/t/{slug}/new", response_class=HTMLResponse)
-    async def new_form(request: Request, slug: str, code: str = ""):
+    async def new_form(request: Request, slug: str, code: str = "", c: str = ""):
         u = need_user(request)
         if slug not in store.schemas or slug not in store.readable_types(u):
             raise HTTPException(404, "unknown type")
-        if not store.can_create(u, slug):
+        choices = collections_for(u, slug)
+        if not choices:
             raise Forbidden(f"Only administrators can add {store.schemas[slug]['name'].lower()} records.")
+        chosen = "mine" if c == "mine" and ("mine", "My collection") in choices or len(choices) == 1 and choices[0][0] == "mine" else "lab"
         vals = scan.prefilled(store.schemas[slug], code)                      # coming from a scan: the code is already in the form
         return render(request, "form.html", slug=slug, schema=store.schemas[slug], mode="new", name="", notes="",
-                      fields=form_descriptors(slug, vals, creating=True, place_new=True), version="")
+                      fields=form_descriptors(slug, vals, creating=True, place_new=True), version="", collections=choices, chosen=chosen)
 
     @app.post("/t/{slug}/new")
     async def new_submit(request: Request, slug: str):
         u = need_user(request)
         if slug not in store.schemas or slug not in store.readable_types(u):
             raise HTTPException(404, "unknown type")
-        if not store.can_create(u, slug):                                    # before reading the form: it may add options and places
+        choices = collections_for(u, slug)
+        if not choices:                                                      # before reading the form: it may add options and places
             raise Forbidden(f"Only administrators can add {store.schemas[slug]['name'].lower()} records.")
         form, raw, files, additions = await read_form(request, slug)
+        chosen = "mine" if form.get("collection") == "mine" else "lab"
+        if chosen not in [v for v, _ in choices]:
+            raise Forbidden(f"You cannot add {store.schemas[slug]['name'].lower()} records to that collection.")
         try:
-            rid = store.create(slug, u, form.get("name", ""), raw, form.get("notes", ""), additions=additions)
+            rid = store.create(slug, u, form.get("name", ""), raw, form.get("notes", ""), additions=additions, personal=chosen == "mine")
         except ValidationError as e:
             return render(request, "form.html", status=422, slug=slug, schema=store.schemas[slug], mode="new", name=form.get("name", ""),
                           notes=form.get("notes", ""), fields=form_descriptors(slug, raw, e.errors, creating=True, place_new=True, typed=additions),
-                          version="", errors=e.errors)
-        flash(request, f"Created {rid}. Write this ID on the label.")
+                          version="", errors=e.errors, collections=choices, chosen=chosen)
+        flash(request, f"Created {rid}{' in your collection' if chosen == 'mine' else ''}. Write this ID on the label.")
         attach_files(request, rid, u, files)
-        return RedirectResponse(f"/t/{slug}/new" if form.get("action") == "another" else f"/r/{rid}", 303)
+        return RedirectResponse((f"/t/{slug}/new" + ("?c=mine" if chosen == "mine" else "")) if form.get("action") == "another" else f"/r/{rid}", 303)
 
     def owner_choices(u):
         """(user ID, name, username) of everyone an administrator may hand a record to; empty for other people (the form shows no owner box)."""
@@ -234,7 +243,7 @@ def register(app, c):
             if not store.readable(u, owner_dir):                                  # hidden type, or archived by someone else
                 raise HTTPException(404, "file not found")
         else:                                                                     # a purged record's folder still has a type by its prefix
-            kind = store.prefix_type.get(owner_dir.split("-")[0].upper())
+            kind = store.prefix_type.get(ids.prefix_of(owner_dir))
             if not perms.is_admin(u) and (kind is None or kind not in store.readable_types(u)):
                 raise HTTPException(404, "file not found")
         return FileResponse(full, filename=os.path.basename(full))

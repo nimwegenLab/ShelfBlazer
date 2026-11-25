@@ -12,7 +12,7 @@ class TestHome(Base):
         page = self.client("alice").get("/").text
         self.assertRegex(page, r'<h1>Home <span class="muted count">2 types \u00b7 3 records</span></h1>')
         self.assertIn('placeholder="Search all records, or type an ID such as ST-2"', page)
-        self.assertTrue(tags(page, "h2", class_="sec", _text=re.compile(r"^Record types\s*2 types$")))
+        self.assertTrue(tags(page, "h2", class_="sec", _text=re.compile(r"^Record types$")))
         self.assertNotIn("Stocks", page)
 
     def test_counts_skip_archived_and_hidden_types(self):

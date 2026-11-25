@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block title %}Move to the lab collection{% endblock %}
+{% block body %}<div class="hero"><div><h1>Move to the lab collection</h1>{% if choose %}<p class="muted">First, what to do about the records they link to</p>{% endif %}</div></div>
+{% if plan.problems %}<div class="callout warn"><p><strong>This cannot be moved yet:</strong></p><ul>{% for rid, why in plan.problems %}<li><code class="rid">{{ rid }}</code> {{ why }}</li>{% endfor %}</ul></div>{% endif %}
+{% if choose %}<form method="get" action="/move/confirm" class="move">{% for i in ids %}<input type="hidden" name="ids" value="{{ i }}">{% endfor %}
+<p>{{ what }} will move. Some of them link to personal records, and a lab record cannot link to a personal one. For each, choose:</p>
+{% for it in plan["items"] if it.lookalikes and not it.asked %}<fieldset class="choices"><legend><a class="rid" href="/r/{{ it.rec.id }}">{{ it.rec.id }}</a> {{ it.rec.name }} <span class="muted">(linked from {{ it.via }})</span></legend>
+{% for l in it.lookalikes %}<label class="chk"><input type="radio" name="r_{{ it.rec.id }}" value="{{ l.id }}"{% if it.relink == l.id %} checked{% endif %}> link to <a class="rid" href="/r/{{ l.id }}">{{ l.id }}</a> {{ l.name }} instead (the lab already has it)</label>
+{% endfor %}<label class="chk"><input type="radio" name="r_{{ it.rec.id }}" value=""{% if not it.relink %} checked{% endif %}> move it to the lab collection too</label></fieldset>
+{% endfor %}<p class="actions"><button class="primary">Continue</button> <a class="btn" href="{{ back }}">Cancel</a></p></form>
+{% else %}<div class="tablewrap"><table><thead><tr><th>Now</th><th>Name</th><th>Becomes</th><th></th></tr></thead><tbody>
+{% for it in plan["items"] %}<tr><td><a class="rid" href="/r/{{ it.rec.id }}">{{ it.rec.id }}</a></td><td>{{ it.rec.name }}</td>
+<td>{% if it.relink %}<span class="muted">stays in the personal collection</span>{% else %}<code class="rid">{{ it.new_id }}</code>{% endif %}</td>
+<td>{% if not it.asked %}<span class="muted">Linked from {{ it.via }}{{ ': it moves too, because a lab record cannot link to a personal one.' if not it.relink else '; the moved records link to ' ~ it.relink ~ ' instead.' }}</span>
+{% elif it.lookalikes %}<span class="muted">The lab collection already has {% for l in it.lookalikes %}<a class="rid" href="/r/{{ l.id }}">{{ l.id }}</a> {{ l.name }}{{ ', ' if not loop.last }}{% endfor %}: check it is not the same.</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% if not plan.problems %}<h2>What moving means</h2><ul>
+<li><strong>You cannot undo it.</strong> Only an administrator can.</li>
+<li>Each record gets a new lab ID (shown above). <strong>Relabel the tubes.</strong> The old ID still opens the record.</li>
+<li>The record and its history join the lab collection: everybody who can see the type sees it, and it is edited like any lab record. Its owner stays the same.</li></ul>
+<form method="post" action="/move"><input type="hidden" name="csrf_token" value="{{ csrf }}">{% for i in ids %}<input type="hidden" name="ids" value="{{ i }}">{% endfor %}{% for o, n in relink.items() %}<input type="hidden" name="relink" value="{{ o }}:{{ n }}">{% endfor %}
+<p class="actions"><button class="primary">Move {{ what }} to the lab collection</button> {% if asks %}<a class="btn" href="/move?{{ query }}">Back</a> {% endif %}<a class="btn" href="{{ back }}">Cancel</a></p></form>
+{% else %}<p class="actions">{% if asks %}<a class="btn" href="/move?{{ query }}">Back</a> {% endif %}<a class="btn" href="{{ back }}">Cancel</a></p>{% endif %}{% endif %}{% endblock %}

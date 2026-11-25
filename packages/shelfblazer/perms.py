@@ -16,10 +16,17 @@ A type definition may change this with roles only (never with named people):
 * edit = admin: only administrators change and archive records.  edit = all: every signed-in reader may change and archive
   records (whoever archives a record someone else created no longer sees it; its creator and administrators do).
 Administrators can do everything with every type. Nobody can edit what they cannot read.
+
+Personal collections (design section 17): ``"permissions": {"personal": "off" | "all" | "admin"}`` (default off) lets people keep records of
+the type in their own collection (IDs like ``ST-P17``, see ids.py). A personal record is changed, archived and restored by its owner and
+administrators only, whatever ``edit`` says. Others who can read the type see it unless the owner unchecked "Visible to others" for the
+type; that hides it in the app only (the repository and its backups still hold it).
 """
+from . import ids
 
 DEFAULTS = {"read": "all", "create": "all", "edit": "owner"}
 CHOICES = {"read": ("all", "admin"), "create": ("all", "admin"), "edit": ("owner", "admin", "all")}
+PERSONAL_CHOICES = ("off", "all", "admin")                   # "permissions.personal"; kept apart from the three rules above
 
 
 def is_admin(actor):
@@ -50,6 +57,26 @@ def can_read_type(actor, schema):
 can_read_record = can_read_type          # records follow their type
 
 
+def personal_setting(schema):
+    value = ((schema or {}).get("permissions") or {}).get("personal")
+    return value if value in PERSONAL_CHOICES else "off"
+
+
+def can_create_personal(actor, schema):
+    """Add records of this type to one's own collection."""
+    mode = personal_setting(schema)
+    return can_read_type(actor, schema) and (mode == "all" or (mode == "admin" and is_admin(actor)))
+
+
+def can_create_type_records(actor, schema, personal):
+    """Add records of this type to the chosen collection: one's own (``personal``) or the lab's."""
+    return can_create_personal(actor, schema) if personal else can_create(actor, schema)
+
+
+def owns_or_admin(actor, rec):
+    return is_admin(actor) or (can_read(actor) and rec.get("created_by") == actor.get("uid"))
+
+
 def can_create(actor, schema):
     if not can_read_type(actor, schema):
         return False
@@ -62,13 +89,27 @@ def can_edit(actor, rec, schema):
         return False
     if is_admin(actor):
         return True
+    if ids.is_personal(rec.get("id")):
+        return rec.get("created_by") == actor["uid"]
     mode = setting(schema, "edit")
     return mode == "all" or (mode == "owner" and rec.get("created_by") == actor["uid"])
 
 
+def can_see_record(actor, rec, schema, shared=lambda: True):
+    """THE rule for reading a record, applied on every read path (pages, search, links, formulas, files, history, export):
+    its type must be readable; an archived record is seen by its creator and administrators only; so is a personal record whose
+    owner hides that collection from others. ``shared()`` answers whether the owner's collection of this type is visible to others
+    (asked only when it matters)."""
+    if not can_read_type(actor, schema):
+        return False
+    if rec.get("archived") and not can_see_archived(actor, rec):
+        return False
+    return not ids.is_personal(rec.get("id")) or owns_or_admin(actor, rec) or shared()
+
+
 def can_see_archived(actor, rec):
     """An archived record is visible to its creator and to administrators only (the caller has checked the type is readable)."""
-    return is_admin(actor) or (can_read(actor) and rec.get("created_by") == actor["uid"])
+    return owns_or_admin(actor, rec)
 
 
 def can_manage_users(actor):

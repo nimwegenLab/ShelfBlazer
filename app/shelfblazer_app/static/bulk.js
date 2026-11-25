@@ -21,7 +21,7 @@
   var form = document.getElementById("bulk");
   if (form && toggle) {
     var boxes = Array.prototype.slice.call(document.querySelectorAll("input.row-check"));
-    var all = document.getElementById("check-all"), go = document.getElementById("bulk-go"), exp = document.getElementById("bulk-export"), count = document.getElementById("bulk-count");
+    var all = document.getElementById("check-all"), go = document.getElementById("bulk-go"), exp = document.getElementById("bulk-export"), mv = document.getElementById("bulk-move"), count = document.getElementById("bulk-count");
     var clear = document.getElementById("bulk-clear"), done = document.getElementById("bulk-done"), last = null;
     var sel = {};
     try { (JSON.parse(stored(idsKey)) || []).forEach(function (id) { sel[id] = true; }); } catch (e) { sel = {}; }
@@ -29,6 +29,7 @@
     function update() {
       var n = Object.keys(sel).length, shown = boxes.filter(function (b) { return b.checked; }).length, away = n - shown;
       go.disabled = exp.disabled = n === 0;
+      if (mv) mv.disabled = n === 0;
       all.checked = shown > 0 && shown === boxes.length;
       all.indeterminate = shown > 0 && shown < boxes.length;
       clear.disabled = n === 0;

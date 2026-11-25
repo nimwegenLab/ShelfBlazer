@@ -3,9 +3,9 @@ Built once per app by ``make`` (they read the store, the accounts and display na
 import os, re
 from types import SimpleNamespace
 
-from shelfblazer import fields as fieldrules, formula
+from shelfblazer import fields as fieldrules, formula, ids
 from shelfblazer.search import norm
-from .format import short_storage
+from .format import short_storage, storage_chunks
 from .views import hue_of, initials
 
 IMAGE_EXTENSIONS = frozenset(("jpg", "jpeg", "png", "webp", "gif", "avif"))      # shown as pictures; other files (HEIC) stay plain links
@@ -39,7 +39,8 @@ def make(store, users, display):
         mode = fieldrules.display_mode(f)
         if mode and isinstance(v, str):
             shown = short_storage(v) if mode == "short" else v
-            return dict(text=shown, full=v if mode == "short" else None, outdated=(mode == "outdated"))
+            return dict(text=shown, full=v if mode == "short" else None, outdated=(mode == "outdated"),
+                        chunks=storage_chunks(shown) if mode == "short" else None)
         if f["type"] in ("select", "multiselect"):
             vals = v if isinstance(v, list) else [v]
             return dict(text=", ".join(map(str, vals)), chips=[(x, hue_of(x)) for x in vals])
@@ -51,7 +52,7 @@ def make(store, users, display):
         if fdef and fdef["type"] == "computed":
             return computed_cell(rec, fdef, viewer)
         if key == "id":
-            return dict(text=rec["id"], href=f"/r/{rec['id']}", sort=rec["legacy_id"])
+            return dict(text=rec["id"], href=f"/r/{rec['id']}", sort=ids.sort_key(rec))
         if key == "name":
             return dict(text=rec["name"], sort=norm(rec["name"]))
         if key == "created_by":

@@ -8,7 +8,7 @@
 
 Every test builds its own temporary folder and git repository, so files do not share state and can run side by side.
 Exit status 0 only when every file passed. The output of a failing file is printed in full at the end."""
-import argparse, os, re, subprocess, sys, time
+import argparse, os, re, shutil, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -25,10 +25,27 @@ def test_files(words):
     return sorted(out, key=lambda sf: -os.path.getsize(os.path.join(ROOT, *sf)))
 
 
+def real_git_dir():
+    """The folder of the real git on a Mac where ``git`` is the /usr/bin/git shim, else None.
+    The shim starts the real git through xcrun, which adds about 11 ms to every call; every record a test creates costs three calls,
+    so the suite loses about a third of its CPU time to it. Only the tests' own processes are pointed at the real one."""
+    if sys.platform != "darwin" or shutil.which("git") != "/usr/bin/git":
+        return None
+    try:
+        found = subprocess.run(["xcrun", "--find", "git"], capture_output=True, text=True, timeout=20).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return os.path.dirname(found) if found and os.path.isfile(found) and os.path.realpath(found) != os.path.realpath("/usr/bin/git") else None
+
+
+GIT_DIR = real_git_dir()
+ENV = dict(os.environ, PATH=GIT_DIR + os.pathsep + os.environ.get("PATH", "")) if GIT_DIR else None
+
+
 def run_one(suite, name):
     start = time.monotonic()
     p = subprocess.run([sys.executable, "-W", "error::ResourceWarning", "-m", "unittest", "discover", "-s", suite, "-p", name],
-                       cwd=ROOT, capture_output=True, text=True)
+                       cwd=ROOT, capture_output=True, text=True, env=ENV)
     text = p.stdout + p.stderr
     m = re.search(r"^Ran (\d+) tests?", text, re.M)
     return dict(path=f"{suite}/{name}", ok=p.returncode == 0, n=int(m.group(1)) if m else 0, seconds=time.monotonic() - start, output=text)
@@ -43,6 +60,8 @@ def main(argv=None):
     if not files:
         print("no test file matches", file=sys.stderr)
         return 2
+    if GIT_DIR:
+        print(f"git: using {GIT_DIR}/git (the /usr/bin/git shim is slower)", flush=True)
     start, results = time.monotonic(), []
     with ThreadPoolExecutor(max_workers=max(1, a.jobs)) as pool:
         for fut in as_completed([pool.submit(run_one, s, n) for s, n in files]):

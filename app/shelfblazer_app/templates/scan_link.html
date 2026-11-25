@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block title %}Add a barcode{% endblock %}
+{% block body %}<div class="hero"><h1>Add to an existing entry</h1></div>
+{% if rec %}<p><a class="rid" href="/r/{{ rec.id }}" data-hue="{{ id_hue(rec.id) }}">{{ rec.id }}</a> {{ rec.name }}{% if rec.archived %} <span class="badge">archived</span>{% endif %}</p>{% endif %}
+{% if refusal %}<p class="flash error">{{ refusal|mono_ids }}</p>
+{% elif not items %}<p class="muted">Nothing usable was read.</p>
+{% elif items|rejectattr('present')|list|length == 0 %}<p>{{ rec.id }} already carries {{ 'this code' if items|length == 1 else 'these codes' }}.</p>
+{% else %}<form method="post" action="/scan/link"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="rid" value="{{ rec.id }}">
+<p>{{ 'This code goes' if items|length == 1 else 'Tick the codes that identify the product; they go' }} into <b>{{ field_label }}</b>, so that the next scan opens this entry.{% if items|length > 1 %} Leave lot numbers and dates out: they change with every package.{% endif %}</p>
+<ul class="scan-codes">{% for it in items %}<li><label class="chk"><input type="checkbox" name="code" value="{{ it.code }}"{% if it.keep and not it.present %} checked{% endif %}{% if it.present %} disabled{% endif %}> <code>{{ it.code }}</code> <span class="muted small">{{ 'already on this entry' if it.present else it.what }}</span></label></li>{% endfor %}</ul>
+<p class="actions"><button class="primary">Add to {{ rec.id }}</button> <a class="btn" href="{{ back }}">Back</a></p></form>{% endif %}
+{% if refusal or not items or items|rejectattr('present')|list|length == 0 %}<p><a class="btn" href="{{ back }}">Back</a>{% if rec %} <a class="btn" href="/r/{{ rec.id }}">Open {{ rec.id }}</a>{% endif %}</p>{% endif %}
+{% endblock %}

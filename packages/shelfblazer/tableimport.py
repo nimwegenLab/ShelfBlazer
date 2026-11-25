@@ -1,15 +1,15 @@
-"""Import records of one type from a delimited text file (CSV, TSV or semicolon-separated), for administrators.
+"""Import records of one type from a delimited text file (CSV, TSV or semicolon-separated), for anyone who may add records of the type.
 
 Pure functions over a Store, in the order the web pages use them: ``decode`` and ``parse`` read the file, ``targets`` and ``auto_map``
 offer the columns of the type, ``plan`` checks every row without writing anything. ``Store.import_table`` runs ``plan`` under the write
 lock and, when no row has an error, writes everything as one git commit.
 
-Rules: a row with an ID updates that record, a row without one creates a record. A blank cell leaves the field as it is (so a
+Rules: a row with an ID updates that record (only if the person may change it), a row without one creates a record. A blank cell leaves the field as it is (so a
 partly filled column never wipes data). Rows are checked with the same rules as the record form. One bad row stops the whole import."""
 import csv, io, re
 from collections import Counter
 
-from . import fields as fieldrules
+from . import fields as fieldrules, ids, perms
 
 MAX_BYTES = 1_000_000                  # the pages send the file text back and forth in forms, which have a 4 MB limit
 MAX_ROWS = 5000
@@ -71,6 +71,13 @@ def targets(store, slug):
     out = [(ID, "ID (updates a record)"), (NAME, "Name")]
     out += [(f["key"], f["label"]) for f in store.schemas[slug]["fields"] if fieldrules.is_value(f)]
     return out + [(NOTES, "Notes")]
+
+
+def template_header(store, slug):
+    """The column titles of an empty import file for new records: Name, the fields people fill in (not a legacy free-text one that forms
+    no longer offer), Notes. No ID column: a row without one creates a record (an export file is the starting point for updates)."""
+    sch = store.schemas[slug]
+    return ["Name"] + [f["label"] for f in sch["fields"] if fieldrules.is_value(f) and not f.get("legacy")] + ["Notes"]
 
 
 def _norm(s):
@@ -138,9 +145,10 @@ def _allowed(store, slug, f):
     return ", ".join(names[:SHOW_OPTIONS]) + more
 
 
-def plan(store, actor, slug, header, rows, mapping):
+def plan(store, actor, slug, header, rows, mapping, personal=False):
     """Check every row, write nothing. -> dict(entries, created, updated, unchanged, errors, warnings).
-    An entry: dict(line, action 'create'|'update'|'unchanged'|'error', rid, name, notes, fields, changes [(label, old, new)],
+    ``personal``: the rows go into the actor's personal collection (new records only; IDs in the file must be the actor's own personal
+    records). An entry: dict(line, action 'create'|'update'|'unchanged'|'error', rid, name, notes, fields, changes [(label, old, new)],
     errors {field: message}, warnings [text])."""
     tgts = dict(targets(store, slug))
     if len(mapping) != len(header):
@@ -155,8 +163,8 @@ def plan(store, actor, slug, header, rows, mapping):
         raise FileProblem("assign one column to Name (to create records) or to ID (to update them)")
     fdefs = {f["key"]: f for f in store.schemas[slug]["fields"]}
     names_before = {}
-    for rec in store.records.values():
-        if rec["type"] == slug:
+    for rec in store.visible_records(actor).values():                 # a name the person cannot see is not a duplicate they may be told about
+        if rec["type"] == slug and ids.is_personal(rec["id"]) == personal and (not personal or rec["created_by"] == actor["uid"]):
             names_before.setdefault(rec["name"].casefold(), rec["id"])
     seen_ids, names_in_file, entries = {}, {}, []
     for line, cells in rows:
@@ -166,13 +174,19 @@ def plan(store, actor, slug, header, rows, mapping):
         cur = None
         rid_text = cell.get(ID, "")
         if rid_text:
-            rid = store.canonical_id(rid_text.upper())
+            rid = store.resolve(rid_text, actor["uid"] if personal else None)
             e["rid"] = rid
-            cur = store.records.get(rid)
+            cur = store.readable(actor, rid)                              # a record the person may not see looks like a missing one
             if cur is None:
                 e["errors"][ID] = f"{rid_text} does not exist"
             elif cur["type"] != slug:
                 e["errors"][ID] = f"{rid} is not a {store.schemas[slug]['name'].lower()}"
+            elif ids.is_personal(rid) != personal:
+                e["errors"][ID] = f"{rid} is in the {'lab' if personal else 'personal'} collection, not the one you import into"
+            elif personal and cur["created_by"] != actor["uid"]:
+                e["errors"][ID] = f"{rid} is in someone else's collection"
+            elif not store.can_edit(actor, cur):
+                e["errors"][ID] = f"you may not change {rid} ({'only an administrator' if perms.setting(store.schemas[slug], 'edit') == 'admin' else 'only its owner or an administrator'} can)"
             elif rid in seen_ids:
                 e["errors"][ID] = f"{rid} already appears on line {seen_ids[rid]}"
             else:
@@ -192,7 +206,8 @@ def plan(store, actor, slug, header, rows, mapping):
         e["name"] = name
         e["notes"] = cell.get(NOTES) or (cur["notes"] if cur else "")
         fields, errs = store.clean_fields(slug, {k: v for k, v in raw.items() if k not in e["errors"]},
-                                          existing=cur["fields"] if cur else None, viewer=actor)
+                                          existing=cur["fields"] if cur else None, viewer=actor,
+                                          subject=store.subject_of(cur) if cur else (personal, actor["uid"]) if personal else None)
         for k, msg in errs.items():
             f = fdefs.get(k, {})
             e["errors"][k] = msg + (f" ({_allowed(store, slug, f)})" if "allowed options" in msg else "")

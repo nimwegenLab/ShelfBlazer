@@ -4,6 +4,7 @@ import hashlib, json, re
 from .errors import StoreError
 
 TOP_ORDER = ["id", "type", "name", "created_by", "created_at", "updated_at", "archived", "legacy_id"]
+OPTIONAL_TOP = ["former_ids"]          # written only when present: the IDs a record had before it moved to the lab collection
 
 
 def parse_record(text, path="?"):
@@ -26,7 +27,7 @@ def parse_record(text, path="?"):
 
 def serialize_record(rec, field_order):
     j = lambda v: json.dumps(v, ensure_ascii=False)
-    lines = ["---"] + [f"{k}: {j(rec.get(k))}" for k in TOP_ORDER]
+    lines = ["---"] + [f"{k}: {j(rec.get(k))}" for k in TOP_ORDER] + [f"{k}: {j(rec[k])}" for k in OPTIONAL_TOP if rec.get(k)]
     fields = rec["fields"]
     if fields:
         lines.append("fields:")

@@ -7,6 +7,24 @@ A change to the record or type-definition format in `data/` always gets an **Upg
 To release: set the same version in `app/pyproject.toml` and `packages/pyproject.toml`, add a section below, commit, then tag `vMAJOR.MINOR.PATCH`.
 (Reinstall with `pip install -e packages -e app` afterwards so the version shown in the app follows.)
 
+## [0.3.0] - 2026-11-25
+
+### Added
+- **Personal collections.** A type can let each person keep their own items beside the lab collection (`permissions.personal`: `off`, `all`, `admin`; off by default). Personal items use the type's fields and rules. Each person counts their own from 1 (`ST-P3`); someone else's shows as `ST-P3[Alice A]`, and the file name, links and addresses carry the owner (`ST-P3~U7F3K2QA`). The sidebar, lists, new-record form, search, Home, scan, export and import know the two collections. *Visible to others* (Me page, per type, on by default) hides a person's items from other people's lists, search and links; administrators still see them. A lab record cannot link to a personal item, and a personal item cannot link to another person's.
+- **Move to the lab collection:** one page with what will happen and the button (also for several items). The personal items a moved item links to come along, or are linked to a matching lab item (a first page asks only when there is a look-alike). The old ID keeps opening the record, and *Undo* is available to administrators.
+- `shelfblazer move-to-personal <username> <IDs> [--from FILE] [--yes]`: moves a person's own lab records into their personal collection (preview without `--yes`).
+- `shelfblazer erase-user` refuses while the person still has personal items (archived ones count); `--leave-personal` erases anyway.
+- Import from CSV/TSV is open to everyone who may add records of a type, not only administrators: *Import…* beside *+ New* on list pages (and a link from the new-record form), into the lab collection or one's own. A row with an ID updates that record only if the person could edit it by hand. The import page moves to `/t/<type>/import` (the old administrator address redirects).
+- Scan: when no record carries a code, it can be added to an existing entry (the same product in a new package). Choose the entry with the usual search, tick the codes to keep (lot numbers and unsure codes start unticked when a product code is present), save: one commit, and the next scan opens that entry. Only for entries the person may edit.
+- The import page offers an empty template file with the type's column titles.
+- Strain lists wrap long storage text onto several lines; the sidebar puts Scan under the product name and aligns its entries on the left.
+
+### Upgrading
+- **No change to existing records or type definitions.** Personal collections are off until an administrator sets `permissions.personal` on a type, and nothing else changes until someone creates a personal item.
+- **No way back to 0.2 once a personal item exists:** 0.2 does not know IDs such as `ST-P3` or the owner in a file name (`ST-P3~U7F3K2QA.md`). Before deploying 0.3, tag the data repository (`git tag before-0.3`) and keep a backup of the instance folder, so 0.2 can be restored.
+- `config/counters.yaml` gets one counter per person and type (`strain.P.<user ID>`) when they create their first personal item.
+- To give a person their own stock after the upgrade: enable personal collections for the type, preview with `shelfblazer move-to-personal <username> <IDs>`, then repeat with `--yes`.
+
 ## [0.2.1] - 2026-11-18
 
 ### Added

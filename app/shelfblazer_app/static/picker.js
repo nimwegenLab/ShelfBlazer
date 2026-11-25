@@ -3,7 +3,7 @@
 // (hidden) and always holds the selected IDs, so the server validates exactly what it validated before.
 // All text from the server is inserted with textContent (never as HTML).
 (function () {
-  var ID_RE = /^[A-Z]{2}-\d+$/;
+  var ID_RE = new RegExp((document.querySelector('meta[name="id-pattern"]') || {}).content || "^[A-Z]{2}-\\d+$");   // the grammar of shelfblazer/ids.py
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -26,6 +26,7 @@
     var to = input.getAttribute("data-ref-to") || "*";
     var multiple = input.getAttribute("data-multiple") !== "0";
     var typeParam = to === "*" ? "" : encodeURIComponent(to);
+    var ownerParam = input.getAttribute("data-owner") ? "&owner=" + encodeURIComponent(input.getAttribute("data-owner")) : "";   // a short personal ID is read for the record's owner
     var ids = parseIds(input.value), info = {}, items = [], active = -1, timer = null;
 
     var wrap = el("div", "pick"), chips = el("span", "pick-chips");
@@ -46,19 +47,23 @@
       ids.forEach(function (id) {
         var d = info[id], chip = el("span", "pick-chip");
         if (d) chip.setAttribute("data-hue", d.hue);
-        chip.appendChild(el("code", "rid", id));
+        chip.appendChild(el("code", "rid", d && d.label || id));
         if (d && d.name) chip.appendChild(el("span", "pick-name", d.name));
         var x = el("button", "pick-x", "×");
-        x.type = "button"; x.setAttribute("aria-label", "Remove " + id);
+        x.type = "button"; x.setAttribute("aria-label", "Remove " + (d && d.label || id));
         x.addEventListener("click", function () { ids = ids.filter(function (i) { return i !== id; }); sync(); render(); q.focus(); });
         chip.appendChild(x); chips.appendChild(chip);
       });
       sync();
     }
+    function collection() {                                     // what this form may link to: a personal record also links to its owner's own
+      var f = input.form, on = f && f.querySelector("input[name=collection]:checked"), scope = document.getElementById("link-scope"), v = on ? on.value : (scope && scope.value) || "lab";
+      return v === "mine" ? "lab%2Bmine" : encodeURIComponent(v === "lab+mine" ? "lab+mine" : "lab");
+    }
     function loadNames() {
       var missing = ids.filter(function (i) { return !info[i]; });
       if (!missing.length) return;
-      getJSON("/api/records?ids=" + encodeURIComponent(missing.join(","))).then(function (r) {
+      getJSON("/api/records?collection=any&ids=" + encodeURIComponent(missing.join(",")) + ownerParam).then(function (r) {
         r.results.forEach(function (d) { info[d.id] = d; });
         render();
       });
@@ -82,7 +87,7 @@
       items.forEach(function (d, n) {
         var li = el("li", "pick-item"); li.setAttribute("role", "option"); li.setAttribute("aria-selected", "false");
         li.setAttribute("data-hue", d.hue);
-        li.appendChild(el("code", "rid", d.id));
+        li.appendChild(el("code", "rid", d.label || d.id));
         li.appendChild(el("span", "pick-name", d.name || "(no name)"));
         if (to === "*") li.appendChild(el("span", "muted small", d.type_name));
         if (d.archived) li.appendChild(el("span", "badge", "archived"));
@@ -96,14 +101,14 @@
     }
     function search() {
       var text = q.value.trim();
-      getJSON("/api/records?q=" + encodeURIComponent(text) + "&type=" + typeParam + "&limit=8").then(function (r) {
+      getJSON("/api/records?q=" + encodeURIComponent(text) + "&type=" + typeParam + "&limit=8&collection=" + collection()).then(function (r) {
         if (q.value.trim() === text) show(r.results);          // ignore answers that arrive late
       });
     }
     function addTyped() {                                       // an ID typed or pasted in full, e.g. "PL-142"
       var text = q.value.trim().replace(/,$/, "").toUpperCase();
       if (!ID_RE.test(text)) return false;
-      getJSON("/api/records?ids=" + encodeURIComponent(text) + "&type=" + typeParam).then(function (r) {
+      getJSON("/api/records?ids=" + encodeURIComponent(text) + "&type=" + typeParam + "&collection=" + collection() + ownerParam).then(function (r) {
         if (r.results.length) add(r.results[0]); else msg.textContent = text + " does not exist (or is not allowed here).";
       });
       return true;

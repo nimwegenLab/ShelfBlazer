@@ -212,6 +212,26 @@ class Users:
             if not any(x["role"] == "admin" and x["active"] and x["pw"] for x in d["users"].values()):
                 raise ValueError("at least one active admin with a password must remain")
 
+    def set_collection_visible(self, username, type_slug, visible):
+        """The person's "Visible to others" choice for their personal collection of one type (default: visible). Stored with the
+        account, outside the data repository, as the list of types they hide ("hidden_collections")."""
+        with self._txn() as d:
+            u = d["users"].get(username.lower())
+            if not u:
+                raise KeyError(username)
+            hidden = [s for s in u.get("hidden_collections", []) if s != type_slug]
+            if not visible:
+                hidden.append(type_slug)
+            if hidden:
+                u["hidden_collections"] = sorted(hidden)
+            else:
+                u.pop("hidden_collections", None)
+
+    @staticmethod
+    def collection_visible(u, type_slug):
+        """Whether this account shows its personal collection of the type to others (an unknown account: yes)."""
+        return type_slug not in (u or {}).get("hidden_collections", [])
+
     def set_password(self, username, password):
         err = check_password_strength(password)
         if err:

@@ -62,11 +62,11 @@ header.side{position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex
 .side-body{display:flex;flex-direction:column;gap:12px;flex:1}
 nav{display:flex;flex-direction:column;gap:1px}
 nav a{display:flex;align-items:center;gap:8px;min-height:28px;padding:4px 8px;border-radius:4px;font-size:13px;line-height:18px;text-decoration:none;color:var(--fg)}
-nav a[data-hue]::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
+nav a[data-hue]::before{content:"";width:8px;height:8px;margin:0 3.5px;border-radius:50%;background:var(--c);flex:none}   /* centred under the 15px Scan icon, so the labels line up */
 nav a:hover{background:var(--hover)}
 nav a[aria-current]{background:var(--c-soft,var(--hover));color:var(--c-ink,var(--fg));font-weight:600}
 nav a.admin{position:relative;margin-top:10px}nav a.admin::after{content:"";position:absolute;left:8px;right:8px;top:-5px;border-top:1px solid var(--line)}
-nav a.admin::before{content:"";width:8px;height:8px;border-radius:50%;border:1px solid var(--line-strong);flex:none}
+nav a.admin::before{content:"";width:8px;height:8px;margin:0 3.5px;border-radius:50%;border:1px solid var(--line-strong);flex:none}
 [data-look="classic"] nav a[data-hue]::before{background:var(--line-strong)}[data-look="classic"] nav a[data-hue][aria-current]::before{background:var(--accent)}
 .ico.big{width:28px;height:28px}.ico{display:inline-block;width:1em;height:1em;fill:currentColor;flex:none;vertical-align:-.12em}.menu-toggle .ico{width:18px;height:18px}
 .side-foot{margin-top:auto;border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:2px}
@@ -111,6 +111,7 @@ form.edit label,.card-form label{display:flex;flex-direction:column;gap:4px;font
 form.edit label.bool{flex-direction:row;align-items:center;gap:8px}.checks{display:flex;flex-wrap:wrap;gap:4px 16px}.newopt{margin-top:4px}.checks[hidden],.newopt[hidden]{display:none}.mselect{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.mselect select{width:auto}.chipx{border:0;background:none;color:inherit;padding:0 0 0 2px;cursor:pointer;font:inherit;line-height:16px}.err{color:var(--danger);font-size:12px}
 /* page title row: [icon] title count ........ button, then a 2px rule (type colour; accent in Classic; neutral on untyped pages) */
 .hero{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:0 0 8px;margin:0 0 12px;border-bottom:2px solid var(--c,var(--line-strong))}
+.heroacts{display:flex;align-items:center;gap:8px}
 .hero h1{display:flex;align-items:center;gap:8px;margin:4px 0 0}.hero h1 .muted{color:var(--muted)}.hero h1 .count{font-size:13px;font-weight:400}.hero h1 .idtag{font-size:inherit}.hero h1 .ico{width:16px;height:16px;color:var(--c-ink,var(--fg))}
 .typechip{display:inline-flex;align-items:center;gap:4px;padding:0 6px;border-radius:4px;background:var(--c-soft,var(--side));color:var(--c-ink,var(--fg));font-weight:600;font-size:12px;line-height:16px;text-decoration:none}.typechip .ico{display:none}.actions{display:flex;gap:8px;margin:8px 0 12px;align-items:center}.hero .actions{margin:0}
 
@@ -119,7 +120,8 @@ form.edit label.bool{flex-direction:row;align-items:center;gap:8px}.checks{displ
 table{border-collapse:collapse;width:100%;font-size:13px;line-height:18px}th,td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);vertical-align:top}
 tbody tr:hover{background:var(--hover)}tbody tr:has(input.row-check:checked){background:var(--c-soft,var(--hover))}tr[data-href]{cursor:pointer}tbody tr:last-child td{border-bottom:0}
 td:first-child{white-space:nowrap}thead th{background:var(--bg);position:sticky;top:0;white-space:nowrap;font-size:12px;line-height:16px;font-weight:600;color:var(--muted);border-bottom:1px solid var(--fg)}a.sort{color:inherit;text-decoration:none}a.sort:hover{text-decoration:underline}
-.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:26rem}.clamp.storage{display:inline-block;white-space:nowrap;text-overflow:ellipsis;vertical-align:bottom}.ownercell{white-space:nowrap}.pager{text-align:center}
+.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:26rem}.clamp.storage{display:inline-block;white-space:nowrap;text-overflow:ellipsis;vertical-align:bottom}
+td .clamp.storage{display:block;white-space:normal;max-width:9.5rem}.storage .u{white-space:nowrap}   /* list columns: wrap between "Box 2 Well C5", "(Freezer 1 -80);", "also …" */.ownercell{white-space:nowrap}.pager{text-align:center}
 table.kv{max-width:900px}table.kv tr,table.kv tr:hover{background:transparent}table.kv th{width:176px;font-weight:600;border-bottom-color:var(--line)}
 table.kv tr:last-child th,table.kv tr:last-child td{border-bottom:0}
 
@@ -219,7 +221,8 @@ tr.importerr td{background:var(--warn)}.importmsg{color:var(--warnfg)}.importmap
 .scan-open{display:none}.scan-open.on{display:inline-flex}
 dialog.scan{width:min(92vw,520px);padding:12px;border:1px solid var(--line-strong);border-radius:6px;background:var(--card);color:var(--fg)}
 dialog.scan::backdrop{background:rgba(0,0,0,.45)}dialog.scan video[hidden],.scan-pick[hidden]{display:none}.scan-msg:empty{display:none}
-.scan-pick p{margin:0 0 8px}.scan-pick ul{list-style:none;margin:0 0 8px;padding:0}.scan-pick li{padding:6px 0;border-bottom:1px solid var(--line)}.scan-pick label.chk{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:13px}.scan-pick code{font-family:var(--mono);font-size:13px}
+.scan-pick p{margin:0 0 8px}.scan-pick ul,.scan-codes{list-style:none;margin:0 0 8px;padding:0}.scan-pick li,.scan-codes li{padding:6px 0;border-bottom:1px solid var(--line)}.scan-pick label.chk,.scan-codes label.chk{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:13px}.scan-pick code,.scan-codes code{font-family:var(--mono);font-size:13px}
+.scanlink .row{display:flex;gap:8px;align-items:flex-start;max-width:520px}.scanlink .row .pick,.scanlink .row input[name=rid]{flex:1}
 dialog.scan video{display:block;width:100%;max-height:60vh;object-fit:cover;border-radius:4px;background:var(--hover)}
 .scan-msg{margin:8px 0;min-height:36px}.codes code{margin-right:6px}
 /* record picture (a type's "thumbnail" file field): large on the record page, a cover on the cards */
@@ -268,8 +271,9 @@ ul.timeline .name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-ove
 ul.timeline .vprefix{display:none}
 ul.timeline .ago{flex:none;margin-left:auto;color:var(--muted);white-space:nowrap}
 
-/* ---- Scan: a row in the desktop sidebar, an icon button next to the menu button on phones */
-.navscan .ico{width:15px;height:15px;margin:0 -3.5px;color:var(--muted)}
+/* ---- Scan: the first row of the desktop sidebar, an icon button next to the menu button on phones */
+.navscan .ico{width:15px;height:15px;color:var(--muted)}                         /* left edges of the icon, the headings and the dots: all 8px */
+.navscan+a{margin-top:10px}                                                       /* first in the menu: a gap before the types when there is no heading */
 .headscan{display:none}
 .home .scan-open.on{display:none}                                                 /* Scan lives in the sidebar, or the header on phones */
 .headscan .ico,.scan-into .ico{width:16px;height:16px;color:var(--muted)}
@@ -292,7 +296,7 @@ ul.timeline .ago{flex:none;margin-left:auto;color:var(--muted);white-space:nowra
   nav{gap:0;flex:none}
   .side-foot{flex:none}
   nav a{min-height:48px;padding:0 4px;border-radius:0;border-bottom:1px solid var(--line);font-size:15px;line-height:20px;gap:10px}
-  nav a[data-hue]::before,nav a.admin::before{width:10px;height:10px;box-sizing:border-box}
+  nav a[data-hue]::before,nav a.admin::before{width:10px;height:10px;margin:0;box-sizing:border-box}
   nav a.admin{margin-top:0}nav a.admin::after{display:none}
   .side-foot{border-top:0;padding-top:4px}
   .whorow{min-height:52px}
@@ -315,3 +319,9 @@ ul.timeline .ago{flex:none;margin-left:auto;color:var(--muted);white-space:nowra
   ul.timeline .rid{font-size:13px;font-weight:600}
   ul.timeline .name{color:var(--fg)}
 }
+
+.move .choices{list-style:none;margin:4px 0 0;padding:0}.move .choices li{padding:2px 0}
+
+.navhead{display:block;margin:12px 0 2px;padding:0 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.navhead:first-child{margin-top:0}
+.band{margin:0 0 12px}.band .btn{margin-left:8px}.collnote{margin:-4px 0 10px}.elsewhere{margin:10px 0}.collpick{border:0;padding:0;margin:0 0 12px}.collpick legend{padding:0;font-size:13px;color:var(--muted)}

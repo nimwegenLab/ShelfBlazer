@@ -1,7 +1,7 @@
 """Storage display abbreviation (pure function)."""
 import unittest
 
-from shelfblazer_app.format import short_storage as f
+from shelfblazer_app.format import short_storage as f, storage_chunks
 
 ROOM = "Room 6035 / Freezer 1 -80 / "
 
@@ -31,6 +31,13 @@ class TestShortStorage(unittest.TestCase):
         diff = ROOM + "r / box 'Strains collec (box 2)' / D5; also: Room 6035 / Freezer 2 -80 / r / box 'Freezer2 (box 1)' / A3"
         self.assertEqual(f(diff), "Box 2 Well D5 (Freezer 1 -80); also Box 1 Well A3 (Freezer 2 -80)")
         self.assertEqual(f(ROOM + "r / box 'Strains collec (box 1)'; also: box ''"), "Box 1")        # empty second location is dropped
+
+    def test_pieces_for_wrapping(self):
+        self.assertEqual(storage_chunks("Box 2 Well C5 (Freezer 1 -80); also Box 2 Well A7 (Freezer 2 -80)"),
+                         ["Box 2 Well C5", "(Freezer 1 -80);", "also Box 2 Well A7", "(Freezer 2 -80)"])
+        self.assertEqual(storage_chunks("Box 1 Well A4; also Box 2 Well A4"), ["Box 1 Well A4;", "also Box 2 Well A4"])
+        self.assertEqual(storage_chunks("Box 2 Well D3"), ["Box 2 Well D3"])
+        self.assertEqual(storage_chunks(""), [])
 
     def test_anything_else_is_left_alone(self):
         for text in ("legacy box 111 (missing)", "Box 2 Well G3", "freezer 3, top shelf", "", None):

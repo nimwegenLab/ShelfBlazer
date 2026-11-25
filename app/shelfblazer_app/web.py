@@ -11,11 +11,11 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 from starlette.middleware.sessions import SessionMiddleware
 
-from shelfblazer import markdown as md, perms
+from shelfblazer import ids, markdown as md, perms
 from shelfblazer.auth import Users
 from shelfblazer.search import Index
 from shelfblazer.store import TYPE_COLORS, Store
-from . import __version__, scan as scanning
+from . import __version__, idlabels, scan as scanning
 from .accounts import APPEARANCES, LOOKS
 from .cells import make as make_cells
 from .middleware import BodyLimit, NeedLogin, add_error_pages, add_security_headers
@@ -56,7 +56,7 @@ def create_app(data_dir, instance_dir, https_only=False):
 
     def mono_ids(text):
         """Escape a message and show every record ID in it as a code snippet."""
-        pattern = re.compile(r"\b([A-Z]{2})-(\d+)\b")
+        pattern = ids.IN_TEXT
         out = escape(str(text))
         return Markup(pattern.sub(lambda m: f'<code class="rid">{m.group(0)}</code>' if m.group(1) in store.prefix_type else m.group(0), out))
     templates.env.filters["mono_ids"] = mono_ids
@@ -109,13 +109,27 @@ def create_app(data_dir, instance_dir, https_only=False):
         ok = store.readable_types(u)
         base = dict(user=u, is_admin=perms.is_admin(u), csrf=csrf_token(request), flashes=flashes, schemas=store.schemas,
                     nav=[(s, store.schemas[s]["name"]) for s in ordered_types() if s in ok], display=display,
-                    id_hue=lambda rid: type_hue(store.prefix_type.get(str(rid).split("-")[0].upper())) if store.prefix_type.get(str(rid).split("-")[0].upper()) else "",
-                    can_edit=lambda r: store.can_edit(u, r), can_create=lambda slug: store.can_create(u, slug),
-                    md=lambda text: md.render(text, store.visible_records(u)),
+                    is_mine=lambda rec: bool(u) and rec["created_by"] == u["uid"], id_hue=lambda rid: type_hue(store.prefix_type[ids.prefix_of(rid)]) if ids.prefix_of(rid) in store.prefix_type else "", id_pattern=ids.JS_FULL, is_personal=ids.is_personal,
+                    can_edit=lambda r: store.can_edit(u, r), can_create=lambda slug: store.can_create(u, slug), can_create_personal=lambda slug: bool(u) and perms.can_create_personal(u, store.schemas[slug]),
+                    md=lambda text, owner=None: md.render(text, store.visible_records(u), owner, lambda rid: ids.label(rid, u["uid"] if u else None, display)),
                     appearance=appearance_of(request), look=look_of(request), hue=hue_of, type_hue=type_hue, icon=icon_of, svg=svg_icon, initials=initials, active=active_nav(request),
                     here=request.url.path + (("?" + request.url.query) if request.url.query else ""),
-                    can_scan=bool(u) and bool(scanning.types(store, u)))
-        return templates.TemplateResponse(request, template, {**base, **ctx}, status_code=status)
+                    can_scan=bool(u) and bool(scanning.types(store, u)), my_nav=my_types(u))
+        response = templates.TemplateResponse(request, template, {**base, **ctx}, status_code=status)
+        shown = idlabels.labels(response.body.decode("utf-8"), u["uid"] if u else None, display)     # keys of personal records -> ST-P3[Alice]
+        if shown.encode("utf-8") != response.body:
+            response.body = shown.encode("utf-8")
+            response.headers["content-length"] = str(len(response.body))
+        return response
+
+    def my_types(u):
+        """[(slug, name)] of the types that have a "My collection" part in the menu for this person: those that let them keep personal
+        records, and those where they still have some."""
+        if not u:
+            return []
+        ok = store.readable_types(u)
+        have = {r["type"] for r in store.records.values() if r["created_by"] == u["uid"] and ids.is_personal(r["id"])}
+        return [(s, store.schemas[s]["name"]) for s in ordered_types() if s in ok and (s in have or perms.can_create_personal(u, store.schemas[s]))]
 
     def type_hue(slug):
         """Palette slot 1..8 for a record type: its optional "color" in the type definition, else a stable default."""
@@ -131,10 +145,14 @@ def create_app(data_dir, instance_dir, https_only=False):
         path = request.url.path
         m = re.match(r"^/t/([^/]+)", path)
         if m:
-            return m.group(1)
-        m = re.match(r"^/r/([A-Za-z]{2})-\d+", path)
-        if m:
-            return store.prefix_type.get(m.group(1).upper())
+            return f"my:{m.group(1)}" if request.query_params.get("c") == "mine" else m.group(1)
+        p = ids.parse(path[3:].split("/")[0]) if path.startswith("/r/") else None
+        if p:
+            slug = store.prefix_type.get(p.prefix)
+            if p.personal:                                   # a personal record: its owner's "My collection", nobody else's menu entry
+                u = user_of(request)
+                return f"my:{slug}" if u and p.owner == u["uid"] else None
+            return slug
         return ("admin" if path.startswith("/admin") else "me" if path.startswith("/me")
                 else "home" if path == "/" else None)
 
@@ -154,6 +172,11 @@ def create_app(data_dir, instance_dir, https_only=False):
         p = urlparse(url or "")
         return url if url and url.startswith("/") and not url.startswith("//") and not p.netloc else "/"
 
+    def collections_for(u, slug):
+        """[(value, label)] of the collections this person may add records of the type to: the lab's, and their own."""
+        out = [("lab", "Lab collection")] if store.can_create(u, slug) else []
+        return out + ([("mine", "My collection")] if perms.can_create_personal(u, store.schemas[slug]) else [])
+
     def edit_refusal(rec):
         mode = perms.setting(store.schemas[rec["type"]], "edit")
         if mode == "admin":
@@ -168,11 +191,11 @@ def create_app(data_dir, instance_dir, https_only=False):
 
     app.state.time_ago = time_ago
 
-    from . import accounts, bulk, export, files as files_routes, lists, records, records_import, scan, types_admin, users_admin
+    from . import accounts, bulk, export, files as files_routes, lists, move, records, records_import, scan, types_admin, users_admin
     ctx = SimpleNamespace(store=store, users=users, index=index, render=render, need_user=need_user, need_admin=need_admin, user_of=user_of,
                           check_csrf=check_csrf, flash=flash, display=display, off_loop=off_loop,
                           form_descriptors=form_descriptors, type_hue=type_hue, computed_cell=computed_cell, present=present, cell=cell, label_of=label_of, picture=picture, ordered_types=ordered_types,
-                          edit_refusal=edit_refusal, safe_next=safe_next, https_only=https_only)
+                          edit_refusal=edit_refusal, collections_for=collections_for, safe_next=safe_next, https_only=https_only, my_types=my_types)
     lists.register(app, ctx)
     records.register(app, ctx)
     accounts.register(app, ctx)
@@ -183,4 +206,5 @@ def create_app(data_dir, instance_dir, https_only=False):
     files_routes.register(app, ctx)
     types_admin.register(app, ctx)
     scan.register(app, ctx)
+    move.register(app, ctx)
     return app

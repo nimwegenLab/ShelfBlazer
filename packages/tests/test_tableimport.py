@@ -125,10 +125,31 @@ class TestImportTable(Base):
         header, rows, _ = ti.parse(text)
         return self.store.import_table(actor, "strain", header, rows, ti.auto_map(header, ti.targets(self.store, "strain")), **kw)
 
-    def test_only_administrators(self):
+    def names(self, name):
+        return [r for r in self.store.records.values() if r["name"] == name]
+
+    def test_anyone_who_may_add_records_may_import_them(self):
+        r = self.run_import("Name\nx\n", actor=ALICE)
+        self.assertEqual((r["created"], len(self.names("x"))), (1, 1))
+        self.assertEqual(self.names("x")[0]["created_by"], ALICE["uid"])
+
+    def test_a_type_only_administrators_add_to_refuses_the_others(self):
+        self.store.save_schema("strain", dict(self.store.schemas["strain"], permissions={"create": "admin"}), ROOT)
         with self.assertRaises(Forbidden):
             self.run_import("Name\nx\n", actor=ALICE)
-        self.assertEqual(len([r for r in self.store.records.values() if r["name"] == "x"]), 0)
+        self.assertEqual(self.names("x"), [])
+        self.assertEqual(self.run_import("Name\nx\n")["created"], 1)
+
+    def test_a_personal_import_needs_personal_collections(self):
+        with self.assertRaises(Forbidden):
+            self.run_import("Name\nx\n", actor=ALICE, personal=True)
+
+    def test_an_update_of_someone_elses_record_is_a_row_error(self):
+        rid = self.store.create("strain", ROOT, "rootsbug", {})
+        r = self.run_import(f"ID\tGenotype\n{rid}\tg\n", actor=ALICE)
+        self.assertEqual((r["errors"], r["sha"]), (1, None))
+        self.assertIn("you may not change", r["entries"][0]["errors"]["id"])
+        self.assertEqual(self.run_import(f"ID\tGenotype\n{rid}\tg\n")["updated"], 1)
 
     def test_dry_run_writes_nothing(self):
         before = self.commits()

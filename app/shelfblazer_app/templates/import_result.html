@@ -4,4 +4,4 @@
 <div class="callout">Saved as one git commit (<code>{{ sha[:8] }}</code>).
 <form method="post" action="/bulk/undo" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="sha" value="{{ sha }}"><input type="hidden" name="back" value="/t/{{ slug }}"><button>Undo this import</button></form></div>
 <h2>Records</h2><p>{% for i in shown_ids %}<a class="rid" href="/r/{{ i }}">{{ i }}</a> {% endfor %}{% if total_ids > shown_ids|length %}<span class="muted">… and {{ total_ids - shown_ids|length }} more</span>{% endif %}</p>
-<p><a class="btn" href="/t/{{ slug }}">Open the list</a> <a class="btn" href="/admin/types/{{ slug }}">Back to the type</a></p>{% endblock %}
+<p><a class="btn" href="/t/{{ slug }}">Open the list</a>{% if is_admin %} <a class="btn" href="/admin/types/{{ slug }}">Back to the type</a>{% endif %}</p>{% endblock %}

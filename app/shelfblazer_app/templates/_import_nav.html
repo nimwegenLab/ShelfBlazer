@@ -1,0 +1,1 @@
+{% if is_admin %}<p class="subnav"><a href="/admin/users">Users</a> · <a href="/admin/types">Types</a> · <a href="/admin/types/{{ slug }}">{{ schema.name }}</a></p>{% else %}<p class="subnav"><a href="/t/{{ slug }}{{ '?c=mine' if collection == 'mine' or chosen == 'mine' }}">‹ {{ schema.name }}s</a></p>{% endif %}

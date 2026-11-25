@@ -3,6 +3,8 @@ the sign-up passphrase."""
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from shelfblazer import ids
+
 ENTRIES_PER_TYPE = 50   # rows per type on a person's entries page; the heading links to the full, filterable list
 
 
@@ -33,7 +35,7 @@ def register(app, c):
                 by_type.setdefault(r["type"], []).append(r)
         sections = []
         for slug in store.ordered_slugs():
-            recs = sorted(by_type.get(slug, []), key=lambda r: (r["legacy_id"] if isinstance(r["legacy_id"], int) else 0, r["id"]))
+            recs = sorted(by_type.get(slug, []), key=lambda r: (ids.sort_key(r), r["id"]))
             if recs:
                 sections.append(dict(slug=slug, name=store.schemas[slug]["name"], total=len(recs), shown=recs[:ENTRIES_PER_TYPE]))
         return render(request, "admin_user_entries.html", person=person, sections=sections, total=sum(x["total"] for x in sections),

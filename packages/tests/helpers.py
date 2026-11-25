@@ -1,5 +1,5 @@
 """Shared by the core tests (not a test module): the test people, a small store with strains and a plasmid, and purge."""
-import json, os, subprocess, tempfile, unittest
+import atexit, json, os, shutil, subprocess, tempfile, unittest
 
 from shelfblazer.store import Store
 
@@ -28,22 +28,38 @@ BOB = {"username": "bob", "uid": "bob", "name": "Bob B", "role": "user", "active
 ROOT = {"username": "root", "uid": "root", "name": "Root", "role": "admin", "active": True}
 
 
+_READY = {}
+
+
+def _ready_repository():
+    """A finished test repository (the two types and the sample records), built once per test process and copied for every test.
+    Each test still gets its own private copy and changes nothing the others see; only the git work of building it is not repeated."""
+    if not _READY:
+        root = tempfile.mkdtemp(prefix="sb-ready-")
+        atexit.register(shutil.rmtree, root, ignore_errors=True)
+        repo = os.path.join(root, "repo")
+        os.makedirs(os.path.join(repo, "config", "types"))
+        os.makedirs(os.path.join(repo, "data"))
+        for slug, sch in (("strain", STRAIN), ("plasmid", PLASMID)):
+            with open(os.path.join(repo, "config", "types", slug + ".yaml"), "w") as fh:
+                json.dump(sch, fh)
+        subprocess.run(["git", "init", "-q", "-b", "main", repo], check=True)
+        subprocess.run(["git", "-C", repo, "add", "-A"], check=True)
+        subprocess.run(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "i"], check=True)
+        store = Store(repo, users_lookup=lambda n: {"alice": ALICE, "bob": BOB, "root": ROOT}.get(n))
+        _READY.update(repo=repo, a=[store.create("strain", ALICE, f"a{i}", {"genotype": "g"}) for i in range(3)],
+                      b=[store.create("strain", BOB, f"b{i}", {"genotype": "g"}) for i in range(2)], p=store.create("plasmid", ALICE, "pX", {}))
+    return _READY
+
+
 class Base(unittest.TestCase):
     def setUp(self):
+        ready = _ready_repository()
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = os.path.join(self.tmp.name, "repo")
-        os.makedirs(os.path.join(self.repo, "config", "types"))
-        os.makedirs(os.path.join(self.repo, "data"))
-        for slug, sch in (("strain", STRAIN), ("plasmid", PLASMID)):
-            with open(os.path.join(self.repo, "config", "types", slug + ".yaml"), "w") as fh:
-                json.dump(sch, fh)
-        subprocess.run(["git", "init", "-q", "-b", "main", self.repo], check=True)
-        subprocess.run(["git", "-C", self.repo, "add", "-A"], check=True)
-        subprocess.run(["git", "-C", self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "i"], check=True)
+        shutil.copytree(ready["repo"], self.repo, symlinks=True)
         self.store = Store(self.repo, users_lookup=lambda n: {"alice": ALICE, "bob": BOB, "root": ROOT}.get(n))
-        self.a = [self.store.create("strain", ALICE, f"a{i}", {"genotype": "g"}) for i in range(3)]
-        self.b = [self.store.create("strain", BOB, f"b{i}", {"genotype": "g"}) for i in range(2)]
-        self.p = self.store.create("plasmid", ALICE, "pX", {})
+        self.a, self.b, self.p = list(ready["a"]), list(ready["b"]), ready["p"]
 
     def tearDown(self):
         self.tmp.cleanup()

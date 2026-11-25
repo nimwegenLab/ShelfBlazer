@@ -10,6 +10,8 @@
     shelfblazer rename-prefix strain BS --yes          # maintenance: new ID prefix for a type, ST-12 -> BS-12 (one commit; without --yes a preview)
     shelfblazer lfs-setup          # store attached files with Git LFS in an existing data repo (one commit)
     shelfblazer erase-user alice --yes                 # right to erasure: remove the account, keep its user ID as a tombstone
+                                                       # (refuses while alice still has personal records: move or archive them first)
+    shelfblazer move-to-personal alice BS-34..BS-756 --yes   # administrators: alice's lab records into her personal collection
 
 Everything the server needs lives under one runtime home (default ``var/``, or $SHELFBLAZER_HOME, or --home):
 ``<home>/data`` (records), ``<home>/instance`` (users, secret key). --data / --instance override the single folders.
@@ -157,12 +159,28 @@ def cmd_import_users(a):
           "New ones cannot sign in until an administrator issues a set-password link.")
 
 
+def personal_records_of(data, uid):
+    """{type slug: number of records} in the personal collection of this user ID (archived ones included)."""
+    from shelfblazer import ids
+    from shelfblazer.store import Store
+    left = {}
+    for r in Store(data).records.values():
+        if ids.owner_of(r["id"]) == uid:
+            left[r["type"]] = left.get(r["type"], 0) + 1
+    return left
+
+
 def cmd_erase_user(a):
     users = Users(os.path.join(a.instance, "users.json"))
     u = users.get(a.username)
     if not u:
         sys.exit(f"no such user: {a.username}")
     print(f"Erasing {a.username} ({u['name']}): the account goes for good; records and history keep only the user ID {u['uid']} and show 'former member'.")
+    left = personal_records_of(a.data, u["uid"])
+    if left and not a.leave_personal:
+        sys.exit("Refused: " + ", ".join(f"{n} personal {slug} record(s)" for slug, n in sorted(left.items())) + f" (archived ones included) still belong to {a.username}.\n"
+                 "Move them to the lab collection (they can do it themselves, or an administrator), or archive them, then erase.\n"
+                 "Without an owner they would be visible to administrators only. If that is what you want (a right-to-erasure request), add --leave-personal.")
     if not a.yes:
         sys.exit("Nothing changed. Add --yes to do it. Deactivating the account (Users page) is the reversible alternative.")
     try:
@@ -226,6 +244,59 @@ def cmd_rename_prefix(a):
     print("Done. A running server picks the change up by itself.")
 
 
+def expand_ids(items):
+    """IDs from the command line or a file: single IDs ("BS-15"), ranges ("BS-34..BS-756" or "BS-34..756"), commas or spaces between."""
+    from shelfblazer import ids
+    out = []
+    for item in re.split(r"[\s,]+", " ".join(items).upper()):
+        start, sep, end = item.partition("..")
+        first, last = ids.parse(start), (ids.parse(end) or (end.isdigit() and ids.parse(f"{start.rsplit('-', 1)[0]}-{end}")))
+        if sep and first and last and (first.prefix, first.personal) == (last.prefix, last.personal):
+            out += [ids.make(first.prefix, n, first.personal) for n in range(first.number, last.number + 1)]
+        elif item:
+            out.append(item)
+    return list(dict.fromkeys(out))
+
+
+def cmd_move_to_personal(a):
+    from shelfblazer import ids, personal
+    from shelfblazer.store import Store, StoreError, ValidationError
+    users = Users(os.path.join(a.instance, "users.json"))
+    owner = users.get(a.username)
+    if not owner:
+        sys.exit(f"no such user: {a.username}")
+    items = list(a.ids)
+    if a.from_file:
+        with open(a.from_file, encoding="utf-8") as fh:
+            items += [l.split("#")[0] for l in fh]
+    wanted = expand_ids(items)
+    if not wanted:
+        sys.exit("no IDs given")
+    store = Store(a.data, users_lookup=users.by_uid)
+    present = [i for i in wanted if i in store.records]
+    absent = len(wanted) - len(present)
+    plan = personal.plan_to_personal(store, owner, present)
+    print(f"Into the personal collection of {owner['name']} ({a.username}): {len(plan['moving'])} record(s)"
+          + (f" ({', '.join(f'{n} {t.lower()}' for t, n in plan['counts'])})" if plan["counts"] else "")
+          + (f"; {absent} ID(s) in the ranges do not exist and are left out" if absent else "") + ".")
+    for old, new in list(plan["new_ids"].items())[:10]:
+        print(f"  {old} -> {ids.short(new)}")
+    if len(plan["new_ids"]) > 10:
+        print(f"  ... and {len(plan['new_ids']) - 10} more")
+    for rid, text in plan["problems"][:40]:
+        print(f"  problem: {rid} {text}")
+    if plan["problems"]:
+        sys.exit(f"Nothing changed: {len(plan['problems'])} problem(s). Leave those IDs out, or fix them first.")
+    if not a.yes:
+        sys.exit("Nothing changed (preview). Add --yes to do it, as one git commit; the lab IDs keep opening the records, and their "
+                 "numbers stay unused.")
+    try:
+        mapping = personal.apply_to_personal(store, owner, present)
+    except (StoreError, ValidationError) as e:
+        sys.exit(str(e))
+    print(f"Done: {len(mapping)} record(s) moved. A running server picks the change up by itself.")
+
+
 def cmd_lfs_setup(a):
     from shelfblazer.store import Store, StoreError
     store = Store(a.data)
@@ -260,7 +331,7 @@ def resolve_paths(a):
         a.to = a.to or os.path.join(home, "data")
     elif a.cmd == "import-users":
         a.stubs = a.stubs or os.path.join(home, "import_out", "users_stubs.yaml")
-    elif a.cmd in ("run", "drop-field", "rename-prefix", "lfs-setup"):
+    elif a.cmd in ("run", "drop-field", "rename-prefix", "lfs-setup", "move-to-personal", "erase-user"):
         a.data = a.data or os.path.join(home, "data")
     return a
 
@@ -279,11 +350,17 @@ def main(argv=None):
     s = sub.add_parser("set-password"); s.add_argument("username"); s.set_defaults(f=cmd_set_password)
     s = sub.add_parser("set-passphrase"); s.set_defaults(f=cmd_set_passphrase)
     s = sub.add_parser("erase-user", help="remove a person for good (right to erasure); records keep their user ID only")
-    s.add_argument("username"); s.add_argument("--yes", action="store_true"); s.set_defaults(f=cmd_erase_user)
+    s.add_argument("username"); s.add_argument("--data"); s.add_argument("--yes", action="store_true")
+    s.add_argument("--leave-personal", action="store_true", help="erase even if the person still has personal records (they stay, visible to administrators only)")
+    s.set_defaults(f=cmd_erase_user)
     s = sub.add_parser("drop-field", help="remove a field from a type and from all its records (one git commit)")
     s.add_argument("type"); s.add_argument("field"); s.add_argument("--data"); s.add_argument("--yes", action="store_true"); s.set_defaults(f=cmd_drop_field)
     s = sub.add_parser("rename-prefix", help="give a type a new ID prefix, rewriting records and links (one git commit; preview without --yes)")
     s.add_argument("type"); s.add_argument("prefix"); s.add_argument("--data"); s.add_argument("--yes", action="store_true"); s.set_defaults(f=cmd_rename_prefix)
+    s = sub.add_parser("move-to-personal", help="administrators: move a person's lab records into their personal collection (one git commit; preview without --yes)")
+    s.add_argument("username"); s.add_argument("ids", nargs="*", help="IDs or ranges such as BS-34..BS-756")
+    s.add_argument("--from", dest="from_file", help="a file of IDs and ranges (one or more per line; # starts a comment)")
+    s.add_argument("--data"); s.add_argument("--yes", action="store_true"); s.set_defaults(f=cmd_move_to_personal)
     s = sub.add_parser("lfs-setup", help="store attached files with Git LFS in an existing data repository")
     s.add_argument("--data"); s.add_argument("--rewrite-history", action="store_true", help="also convert the files already in the history (rewrites commits)")
     s.add_argument("--yes", action="store_true"); s.set_defaults(f=cmd_lfs_setup)

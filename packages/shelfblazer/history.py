@@ -2,11 +2,11 @@
 record as one of its commits saved it. Read-only; ``Store`` exposes these as methods."""
 import json, re
 
-from . import fields as fieldrules
+from . import fields as fieldrules, ids
 from .errors import NotFound
 from .recordfile import parse_record
 
-_ACTIVITY = re.compile(r"^([A-Z]{2}-\d+): (create|update|archive|restore|delete) by (\S+)$")
+_ACTIVITY = re.compile(rf"^({ids.PATTERN}): (create|update|archive|restore|delete) by (\S+)$")
 _BULK = re.compile(r"^bulk: (.+) \((\d+) (\S+) records\)$")
 
 
@@ -14,15 +14,18 @@ def recent_activity(store, viewer, limit=8):
     """The latest changes to records this viewer may see, newest first: dicts with when, who (user ID), action, id, name, type, deleted."""
     out = []
     ok = store.readable_types(viewer)
-    lines = store.git("log", "-300", "--format=%aI%x09%s", "--", "data", check=False).splitlines()
-    for line in lines:
+    log = store.git("log", "-300", "--format=%x1e%aI%x09%s", "--name-only", "--", "data", check=False)
+    for chunk in log.split("\x1e")[1:]:
+        line, *paths = [l for l in chunk.splitlines() if l]
         when, _, subject = line.partition("\t")
         m = _ACTIVITY.match(subject)
         if m:
             rid, action, who = m.groups()
+            if ids.is_personal(rid):
+                continue                                                    # the lab's activity: personal records are not part of it
             rid = store.canonical_id(rid)
             rec = store.records.get(rid)
-            slug = rec["type"] if rec else store.prefix_type.get(rid.split("-")[0])
+            slug = rec["type"] if rec else store.prefix_type.get(ids.prefix_of(rid))
             if slug not in ok or (rec and not store.can_see(viewer, rec)):
                 continue
             if out and (out[-1]["who"], out[-1]["id"], out[-1]["action"]) == (who, rid, action):
@@ -30,6 +33,9 @@ def recent_activity(store, viewer, limit=8):
             out.append(dict(when=when, who=who, action=action, id=rid, name=rec["name"] if rec else "", type=slug, deleted=rec is None))
         else:
             m = _BULK.match(subject)
+            stems = [p.rsplit("/", 1)[-1][:-3] for p in paths if p.endswith(".md")]
+            if stems and all(ids.is_personal(x) for x in stems):
+                continue                                                    # a bulk edit or import of personal records only
             if m and m.group(3) in ok:
                 out.append(dict(when=when, who=None, action="bulk", id=None, name=f"{m.group(1)} ({m.group(2)} {store.schemas[m.group(3)]['name'].lower()} records)",
                                 type=m.group(3), deleted=False))

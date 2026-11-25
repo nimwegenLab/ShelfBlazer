@@ -1,9 +1,9 @@
 """Maintenance operations run from the command line, rarely: start storing attached files with Git LFS, drop a field
 from a type and all its records, give a type a new ID prefix. Each is one commit by the maintenance account.
 ``Store`` exposes them as methods."""
-import glob, json, os, re, shutil
+import glob, json, os, shutil
 
-from . import schema_edit
+from . import ids, schema_edit
 from .errors import NotFound, StoreError, ValidationError
 from .recordfile import serialize_record, version_of, write_text
 from .store import LFS_ATTRIBUTES, LFS_PATTERNS, MAINTENANCE, author_of, lfs_available     # store.py imports this module only when needed
@@ -78,6 +78,54 @@ def drop_field(store, type_slug, key):
     return len(changed)
 
 
+def plan_renames(store, rename):
+    """What giving records new IDs takes, without writing anything. ``rename(rid)`` returns the new ID, or None to keep it.
+
+    Returns (changes, folders, per_type, mentions): ``changes`` is [(path, target, new_text)] for every record file that mentions a
+    renamed ID (links and notes) or is itself renamed (target is then its new path); ``folders`` is [(src, dst)] for the attachment
+    folders of renamed records; ``per_type`` counts changed files per type; ``mentions`` is [(file, count)] for files that only mention
+    renamed IDs. Used by ``rename_prefix``; moving a record to another collection uses it too.
+    """
+    changes, per_type, mentions = [], {}, []
+    for path in sorted(glob.glob(os.path.join(store.repo, "data", "*", "*.md"))):
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        count = [0]
+        stem = os.path.basename(path)[:-3]
+        old_owner = ids.owner_of(stem)                                     # whose context the text was written in ...
+        new_owner = ids.owner_of(rename(stem) or stem)                     # ... and the one it will be read in (a record can change collection)
+        end = text.find("\n---\n", 3)
+        notes_from = end + 5 if end >= 0 else len(text)                    # the notes follow the front matter, which always holds keys
+
+        def sub(m):
+            written = m.group(0)
+            full = ids.qualify(written, old_owner)                         # in a personal record a short personal ID means its owner's
+            new = rename(full)
+            if new is None:
+                if old_owner == new_owner or full == written:
+                    return written
+                new = full                                                 # the record leaves its owner's context: short mentions become keys
+            if m.start() >= notes_from and new_owner and ids.owner_of(new) == new_owner and not ids.owner_of(written):
+                new = ids.short(new)                                       # in the notes, written without an owner in its owner's own record: stays so
+            if new != written:
+                count[0] += 1
+            return new
+        new_text = ids.IN_TEXT.sub(sub, text)
+        target = os.path.join(os.path.dirname(path), (rename(stem) or stem) + ".md")
+        if count[0] or target != path:
+            changes.append((path, target, new_text))
+            slug = os.path.basename(os.path.dirname(path))
+            per_type[slug] = per_type.get(slug, 0) + 1
+            if target == path:
+                mentions.append((os.path.relpath(path, store.repo), count[0]))
+    folders = []
+    for d in sorted(glob.glob(os.path.join(store.repo, "data", "files", "*"))):
+        new = rename(os.path.basename(d)) if os.path.isdir(d) else None
+        if new:
+            folders.append((d, os.path.join(os.path.dirname(d), new)))
+    return changes, folders, per_type, mentions
+
+
 def rename_prefix(store, type_slug, new_prefix, dry_run=False):
     """Maintenance: give a type a new ID prefix (ST-12 becomes BS-12), in one git commit.
 
@@ -108,23 +156,11 @@ def _rename_prefix(store, type_slug, new_prefix, dry_run):
         raise ValidationError({"prefix": f"the prefix {new} is already used by another type"})
     if store.git("status", "--porcelain", "--", "data", "config", check=False).strip():
         raise StoreError("the data folder has uncommitted changes; commit or discard them first")
-    pat = re.compile(rf"(?<![A-Za-z0-9]){old}-(\d+)\b")
-    changes, mentions, per_type, renamed = [], [], {}, 0
-    for path in sorted(glob.glob(os.path.join(store.repo, "data", "*", "*.md"))):
-        with open(path, encoding="utf-8") as fh:
-            text = fh.read()
-        new_text, n = pat.subn(rf"{new}-\1", text)
-        own = os.path.basename(os.path.dirname(path)) == type_slug
-        target = os.path.join(os.path.dirname(path), pat.sub(rf"{new}-\1", os.path.basename(path))) if own else path
-        if n or target != path:
-            changes.append((path, target, new_text))
-            slug = os.path.basename(os.path.dirname(path))
-            per_type[slug] = per_type.get(slug, 0) + 1
-            renamed += target != path
-            if not own:
-                mentions.append((os.path.relpath(path, store.repo), n))
-    dirs = [(d, os.path.join(os.path.dirname(d), pat.sub(rf"{new}-\1", os.path.basename(d))))
-            for d in sorted(glob.glob(os.path.join(store.repo, "data", "files", f"{old}-*"))) if os.path.isdir(d)]
+    def rename(rid):
+        p = ids.parse(rid)
+        return ids.make(new, p.number, p.personal, p.owner) if p and p.prefix == old else None
+    changes, dirs, per_type, mentions = plan_renames(store, rename)
+    renamed = sum(target != path for path, target, _ in changes)
     report = dict(old=old, new=new, renamed=renamed, files=per_type, mentions=mentions, folders=len(dirs))
     if dry_run:
         return report

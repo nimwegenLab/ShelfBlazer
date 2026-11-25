@@ -45,6 +45,33 @@ class Matching(unittest.TestCase):
         self.assertEqual(scan.prefill(["(01)04038917133913(17)250430(10)1", "4038917133913", "S1111-6701", "1"]), "04038917133913, S1111-6701")
 
 
+class Classify(unittest.TestCase):
+    def test_check_digit(self):
+        for good in ("4038917133913", "036000055115", "04038917133913", "96385074"):
+            self.assertTrue(scan.check_digit_ok(good), good)
+        self.assertFalse(scan.check_digit_ok("4038917133914"))
+
+    def test_product_codes_and_possible_lot_numbers(self):
+        self.assertEqual(scan.classify("(01)04038917133913(17)250430(10)220590103"), [("04038917133913", True, "product code (GTIN), from a GS1 code")])
+        self.assertTrue(scan.classify("0104038917133913" + "17250430")[0][1])
+        self.assertEqual(scan.classify("4038917133913")[0][:2], ("4038917133913", True))
+        self.assertEqual(scan.classify("4038917133914")[0][:2], ("4038917133914", False))      # wrong check digit: not sure
+        self.assertEqual(scan.classify("+$$3123123")[0][1], False)                             # HIBC lot
+        self.assertEqual(scan.classify("+H123PROD1")[0][1], True)                              # HIBC product
+        self.assertIn("lot number?", scan.classify("220590103")[0][2])
+        self.assertEqual(scan.classify("  "), [])
+
+    def test_candidates_tick_only_product_codes_when_there_are_any(self):
+        got = scan.candidates(["220590103", "4038917133913", "04038917133913", "1"])
+        self.assertEqual([(x["code"], x["keep"]) for x in got], [("220590103", False), ("4038917133913", True)])    # same GTIN once, "1" too short
+        self.assertEqual([x["keep"] for x in scan.candidates(["S1111-6701", "220590103"])], [True, True])      # nothing certain: all ticked, checked by the person
+
+    def test_merged_appends_new_codes_once(self):
+        self.assertEqual(scan.merged("4038917133913", ["04038917133913", "S1111-6701"]), "4038917133913, S1111-6701")
+        self.assertEqual(scan.merged("", ["A-1234"]), "A-1234")
+        self.assertEqual(scan.merged("a; b\nc", []), "a, b, c")
+
+
 class FakeStore:
     schemas = {"item": {"scan_fields": ["barcodes", "ref"]}, "plain": {}, "bad": {"scan_fields": "barcodes"}}
 
@@ -206,6 +233,7 @@ class Scan(Base):
 
     def test_the_header_has_a_scan_button_on_every_page_when_a_type_is_set_up_for_it(self):
         self.assertIn('class="headscan" href="/?scan=1"', self.c.get("/t/strain").text)
+        self.assertRegex(self.c.get("/t/strain").text, r'<nav aria-label="Main">\s*<a class="navscan" href="/\?scan=1"')   # first in the sidebar
         self.store.save_schema("consumable", schema(permissions={"read": "admin"}), self.root)
         self.assertNotIn('class="headscan"', self.c.get("/t/strain").text)
 
@@ -234,6 +262,75 @@ class Scan(Base):
         s["scan_fields"] = ["weight"]
         with self.assertRaises(Exception):
             self.store.save_schema("consumable3", s, self.root, create=True)
+
+
+class LinkToExisting(Base):
+    """A code nobody has yet can be added to an entry that is already there: choose it, tick the codes, save."""
+    NEW = "(01)04022495251879(17)301201(10)25N03C8"
+
+    def setUp(self):
+        super().setUp()
+        self.root = self.users.get("root")
+        self.store.save_schema("consumable", schema(), self.root, create=True)
+        self.alice = self.users.get("alice")
+        self.tubes = self.store.create("consumable", self.alice, "PCR tubes", {"barcodes": "4038917133913"})
+        self.c = self.client("alice")
+
+    def link(self, rid, *codes, c=None):
+        return (c or self.c).get("/scan/link", params=[("rid", rid)] + [("c", x) for x in codes])
+
+    def test_the_not_found_page_offers_to_choose_an_existing_entry(self):
+        page = self.c.get("/scan", params={"c": self.NEW}).text
+        self.assertIn('<form class="scanlink" method="get" action="/scan/link">', page)
+        self.assertIn(f'<input type="hidden" name="c" value="{self.NEW}">', page)
+        self.assertIn('data-ref-to="consumable" data-multiple="0"', page)                 # the picker searches the types that can be scanned
+        self.assertIn("/static/picker.js", page)
+        self.assertNotIn("scanlink", self.c.get("/scan", params={"c": "1"}).text)           # nothing usable read: nothing to add
+
+    def test_the_second_step_shows_the_entry_and_ticks_the_product_code_only(self):
+        page = self.link(self.tubes, self.NEW, "25N03C8").text
+        self.assertIn(f'href="/r/{self.tubes}"', page)
+        self.assertIn("PCR tubes", page)
+        self.assertIn('value="04022495251879" checked', page)
+        self.assertRegex(page, r'value="25N03C8"> <code>25N03C8</code> <span class="muted small">a REF or a lot number\?')
+        self.assertIn("into <b>Barcodes</b>", page)
+
+    def test_saving_adds_the_code_in_one_commit_and_the_next_scan_opens_the_entry(self):
+        r = self.post(self.c, "/scan/link", {"rid": self.tubes, "code": ["04022495251879"]})
+        self.assertEqual((r.status_code, r.headers["location"]), (303, f"/r/{self.tubes}"))
+        self.assertEqual(self.store.records[self.tubes]["fields"]["barcodes"], "4038917133913, 04022495251879")
+        self.assertEqual(self.store.git("log", "-1", "--format=%s").strip(), f"{self.tubes}: barcode added from a scan by {self.alice['uid']}")
+        self.assertIn("Barcode 04022495251879 added to", self.c.get(f"/r/{self.tubes}").text)
+        self.assertEqual(self.c.get("/scan", params={"c": self.NEW}).headers["location"], f"/r/{self.tubes}")
+
+    def test_a_code_the_entry_already_carries_is_not_added_twice(self):
+        page = self.link(self.tubes, "04038917133913").text
+        self.assertIn("already carries this code", page)
+        self.assertNotIn('action="/scan/link"', page)
+        before = self.store.git("rev-parse", "HEAD")
+        self.post(self.c, "/scan/link", {"rid": self.tubes, "code": ["04038917133913"]})
+        self.assertEqual(self.store.git("rev-parse", "HEAD"), before)
+
+    def test_only_people_who_may_edit_the_entry_can_add_a_code(self):
+        bob = self.client("bob")
+        page = self.link(self.tubes, self.NEW, c=bob).text
+        self.assertIn("can edit", page)
+        self.assertNotIn('action="/scan/link"', page)
+        self.assertEqual(self.post(bob, "/scan/link", {"rid": self.tubes, "code": ["04022495251879"]}).status_code, 403)
+        self.assertEqual(self.store.records[self.tubes]["fields"]["barcodes"], "4038917133913")
+        self.assertEqual(self.post(self.client("root"), "/scan/link", {"rid": self.tubes, "code": ["04022495251879"]}).status_code, 303)
+
+    def test_an_entry_without_a_barcode_field_or_unknown_is_refused(self):
+        strain = self.create("alice", name="a strain")
+        self.assertIn("has no barcode field", self.link(strain, self.NEW).text)
+        self.assertEqual(self.post(self.c, "/scan/link", {"rid": strain, "code": ["04022495251879"]}).status_code, 403)
+        self.assertIn('There is no entry <code class="rid">CS-999</code>', self.link("CS-999", self.NEW).text)
+        self.assertEqual(self.post(self.c, "/scan/link", {"rid": "CS-999", "code": ["04022495251879"]}).status_code, 404)
+
+    def test_the_form_token_is_required(self):
+        r = self.post(self.c, "/scan/link", {"rid": self.tubes, "code": ["04022495251879"]}, token=False)
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.store.records[self.tubes]["fields"]["barcodes"], "4038917133913")
 
 
 if __name__ == "__main__":

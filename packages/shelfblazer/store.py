@@ -5,8 +5,9 @@ written, and committed to git with the acting user as author. The in-memory ``re
 """
 import contextlib, datetime, fcntl, glob, json, logging, os, re, shutil, subprocess, threading
 
-from . import builtin, fields as fieldrules, formula, history, perms, schema_edit, uploads
-from .auth import UID_RE                                                   # a user ID
+from . import builtin, fields as fieldrules, formula, history, ids, perms, schema_edit, uploads
+from . import ids as ids_mod                                                  # bulk_apply has a parameter called ids
+from .auth import UID_RE, Users                                            # a user ID; Users.collection_visible
 from .errors import Conflict, Forbidden, NotFound, StoreError, ValidationError
 from .fields import FIELD_DISPLAYS, FIELD_VALIDATORS, check_dna, normalize_dois
 from .recordfile import parse_record, read_json, serialize_record, unix_newlines, version_of, write_text
@@ -20,7 +21,6 @@ TYPE_ICONS = ("box", "bacterium", "dna", "bullseye", "flask", "table-cells", "la
 BULK_ACTIONS = ("set", "add", "remove", "owner", "archive", "restore")
 BULK_ADMIN_ACTIONS = ("owner",)
 log = logging.getLogger("shelfblazer")
-ID_PATTERN = re.compile(r"^([A-Z]{2})-(\d+)$")
 # Attached files are stored with Git LFS: the history keeps small pointers,
 # the file contents live in .git/lfs and go to the backup remote's LFS storage. Records, schemas and counters stay plain text.
 MAX_PLACES = 2000                       # storage places that can be added from record forms
@@ -42,6 +42,10 @@ def lfs_available():
     if not shutil.which("git-lfs"):
         raise StoreError("this data repository stores attached files with Git LFS, but git-lfs is not installed "
                          "(macOS: brew install git-lfs; Debian/Ubuntu: apt install git-lfs)")
+
+
+# An owner change on a personal record is refused: its links go to its owner's own personal records (design 17.4).
+OWNER_KEPT = "a personal record keeps its owner (its links are to the owner's own records): move it to the lab collection first"
 
 
 def now_iso():
@@ -107,7 +111,7 @@ class Store:
         pp = os.path.join(self.repo, "config", "storage_places.yaml")
         self.places = read_json(pp) if os.path.exists(pp) else []
         self.records = {}
-        self._backrefs = None
+        self._backrefs = self._formers = None
         for p in glob.glob(os.path.join(self.repo, "data", "*", "*.md")):
             self._load_file(p)
 
@@ -117,19 +121,38 @@ class Store:
         self.former_prefix = {p: slug for slug, s in self.schemas.items() for p in s.get("former_prefixes", [])}
 
     def canonical_id(self, rid):
-        """The current ID for an ID written with a former prefix of its type (ST-12 after ST became BS: BS-12); any other text unchanged."""
-        m = ID_PATTERN.match((rid or "").strip().upper())
-        if m and m.group(1) in self.former_prefix:
-            return f"{self.schemas[self.former_prefix[m.group(1)]]['prefix']}-{m.group(2)}"
-        return rid
+        """The current ID for an ID written with a former prefix of its type (ST-12 after ST became BS: BS-12), or for the personal
+        key a record had before it moved to the lab collection (ST-P17~U7F3K2QA, kept in its "former_ids"); any other text unchanged."""
+        p = ids.parse(rid)
+        if not p:
+            return rid
+        if p.prefix in self.former_prefix:
+            rid = ids.make(self.schemas[self.former_prefix[p.prefix]]["prefix"], p.number, p.personal, p.owner)
+        return self._former_index().get(ids.make(*ids.parse(rid)), rid)
+
+    def resolve(self, text, owner=None):
+        """The key of the record an ID names, as written by or for the person ``owner`` (a user ID): a short personal ID (``ST-P3``)
+        means that person's own; otherwise as ``canonical_id``. Text that is not an ID is returned as it is."""
+        p = ids.parse(text)
+        if not p:
+            return text
+        return self.canonical_id(ids.make(p.prefix, p.number, p.personal, p.owner or (owner if p.personal else None)))
+
+    def _former_index(self):
+        """Former ID -> current ID, from the records' "former_ids" (rebuilt after every change, like the reverse links)."""
+        if getattr(self, "_formers", None) is None:
+            self._formers = {old: r["id"] for r in self.records.values() for old in r.get("former_ids", [])}
+        return self._formers
 
     def _rel_paths(self, rid, type_slug):
         """The repository paths a record's history lives under: its file now, and under each former prefix of its type."""
-        m = ID_PATTERN.match(rid)
+        p = ids.parse(rid)
         rels = [os.path.relpath(self.path_of(rid, type_slug), self.repo)]
         for old in self.schemas[type_slug].get("former_prefixes", []):
-            if m:
-                rels.append(os.path.relpath(self.path_of(f"{old}-{m.group(2)}", type_slug), self.repo))
+            if p:
+                rels.append(os.path.relpath(self.path_of(ids.make(old, p.number, p.personal, p.owner), type_slug), self.repo))
+        rec = self.records.get(rid) or {}
+        rels += [os.path.relpath(self.path_of(old, type_slug), self.repo) for old in rec.get("former_ids", [])]       # before a move
         return rels
 
     def _load_file(self, path):
@@ -273,21 +296,39 @@ class Store:
         p = self._counters_path()
         return read_json(p) if os.path.exists(p) else {}
 
-    def _next_number(self, type_slug):
+    @staticmethod
+    def _counter_key(type_slug, personal, owner):
+        return type_slug + (f".P.{owner}" if personal else "")
+
+    def peek_numbers(self, type_slug, count=1, personal=False, owner=None):
+        """The numbers the next ``count`` records of a type would get: in the lab collection, or in the personal collection of
+        ``owner`` (each person counts their own, from 1); nothing is written."""
+        if personal and not owner:
+            raise ValueError("a personal collection belongs to someone")
         counters = self._read_counters()
-        used = [r["legacy_id"] for r in self.records.values() if r["type"] == type_slug]
-        n = max(counters.get(type_slug, 1), (max(used) + 1) if used else 1)
-        counters[type_slug] = n + 1
+        used = [r["legacy_id"] for r in self.records.values() if r["type"] == type_slug and ids.is_personal(r["id"]) == personal
+                and (not personal or r["created_by"] == owner)]
+        n = max(counters.get(self._counter_key(type_slug, personal, owner), 1), (max(used) + 1) if used else 1)
+        return list(range(n, n + count))
+
+    def _next_number(self, type_slug, personal=False, owner=None):
+        """The next number of a type's lab collection, or of one person's personal collection (counter "<type>.P.<user ID>")."""
+        counters = self._read_counters()
+        key = self._counter_key(type_slug, personal, owner)
+        n = self.peek_numbers(type_slug, 1, personal, owner)[0]
+        counters[key] = n + 1
         with open(self._counters_path(), "w") as fh:
             json.dump(counters, fh, indent=2)
             fh.write("\n")
         return n
 
     # ---- validation
-    def clean_fields(self, type_slug, raw, existing=None, viewer=None):
+    def clean_fields(self, type_slug, raw, existing=None, viewer=None, subject=None):
         """raw: dict key -> str | list[str] | bool from a form. Returns (fields, errors).
 
-        With ``viewer``, a link may only point to records that person may see (links already stored are kept as they are)."""
+        With ``viewer``, a link may only point to records that person may see (links already stored are kept as they are).
+        ``subject`` is the record being saved, as ``subject_of`` gives it (None: a lab record): it decides which personal records
+        it may link to."""
         errors, out = {}, dict(existing or {})
         for f in self.schemas[type_slug]["fields"]:
             k, ty = f["key"], f["type"]
@@ -297,7 +338,7 @@ class Store:
                 continue
             v = raw[k]
             try:
-                val = self._coerce(f, v, type_slug, viewer, (existing or {}).get(k))
+                val = self._coerce(f, v, type_slug, viewer, (existing or {}).get(k), subject)
             except ValueError as e:
                 errors[k] = str(e)
                 continue
@@ -307,7 +348,7 @@ class Store:
                 out[k] = val
         return out, errors
 
-    def _coerce(self, f, v, type_slug, viewer=None, current=None):
+    def _coerce(self, f, v, type_slug, viewer=None, current=None, subject=None):
         ty = f["type"]
         if ty in ("text", "longtext"):
             v = unix_newlines(v).strip()
@@ -360,8 +401,10 @@ class Store:
                 raise ValueError("unknown user")
             return u["uid"]                                   # people are stored by user ID, never by name
         if ty == "ref":
-            ids = [x.strip() for x in re.split(r"[,\s]+", v if isinstance(v, str) else " ".join(v)) if x.strip()]
-            for i in ids:
+            personal, owner = subject or (False, None)
+            targets = [self.resolve(x.strip(), owner if personal else None)         # a short personal ID is the record owner's own
+                       for x in re.split(r"[,\s]+", v if isinstance(v, str) else " ".join(v)) if x.strip()]
+            for i in targets:
                 r = self.records.get(i)
                 if r and viewer is not None and i not in (current or []) and not self.can_see(viewer, r):
                     r = None                                      # a hidden record (hidden type, or archived by someone else) is as good as missing
@@ -369,7 +412,12 @@ class Store:
                     raise ValueError(f"{i} does not exist")
                 if f.get("to") not in (None, "*") and r["type"] != f["to"]:
                     raise ValueError(f"{i} is not a {f['to']}")
-            return list(dict.fromkeys(ids))
+                if ids.is_personal(i) and i not in (current or []):
+                    if not personal:
+                        raise ValueError(f"{i} is in a personal collection: a lab record cannot link to it")
+                    if r["created_by"] != owner:
+                        raise ValueError(f"{i} is in another person's collection")
+            return list(dict.fromkeys(targets))
         return v
 
     def ordered_slugs(self):
@@ -519,19 +567,27 @@ class Store:
         if not (name or "").strip():
             raise ValidationError({"name": "required"})
 
-    def create(self, type_slug, actor, name, raw_fields, notes="", additions=None):
-        """A new record (one commit). ``additions`` (field key -> typed name): new choice options and storage places from the form,
-        saved in the same commit, and only if the record is valid."""
+    @staticmethod
+    def subject_of(rec):
+        """What decides which personal records a record may link to: (is it personal, its owner)."""
+        return (ids.is_personal(rec["id"]), rec["created_by"])
+
+    def create(self, type_slug, actor, name, raw_fields, notes="", additions=None, personal=False):
+        """A new record (one commit), in the lab collection or, with ``personal``, in the actor's own collection.
+        ``additions`` (field key -> typed name): new choice options and storage places from the form, saved in the same commit, and
+        only if the record is valid."""
         if type_slug not in self.schemas:
             raise NotFound(type_slug)
         if not perms.can_read(actor):
             raise Forbidden("not allowed to create records")
         if not perms.can_read_type(actor, self.schemas[type_slug]):
             raise NotFound(type_slug)
-        if not perms.can_create(actor, self.schemas[type_slug]):
+        if personal and not perms.can_create_personal(actor, self.schemas[type_slug]):
+            raise Forbidden(f"{self.schemas[type_slug]['name']} records cannot be kept in a personal collection")
+        if not personal and not perms.can_create(actor, self.schemas[type_slug]):
             raise Forbidden(f"only administrators may add {self.schemas[type_slug]['name'].lower()} records")
         with self._write_lock(), self._with_additions(type_slug, raw_fields, additions) as (raw_fields, add_errors, write_additions):
-            fields, errors = self.clean_fields(type_slug, raw_fields, viewer=actor)
+            fields, errors = self.clean_fields(type_slug, raw_fields, viewer=actor, subject=(personal, actor["uid"]))
             errors.update(add_errors)
             if not (name or "").strip():
                 errors["name"] = "required"
@@ -541,8 +597,8 @@ class Store:
             if errors:
                 raise ValidationError(errors)
             extra, added = write_additions()
-            n = self._next_number(type_slug)
-            rid = f"{self.schemas[type_slug]['prefix']}-{n}"
+            n = self._next_number(type_slug, personal, actor["uid"])
+            rid = ids.make(self.schemas[type_slug]["prefix"], n, personal, actor["uid"])
             t = now_iso()
             rec = dict(id=rid, type=type_slug, name=unix_newlines(name).strip(), created_by=actor["uid"], created_at=t,
                        updated_at=t, archived=False, legacy_id=n, fields=fields, notes=unix_newlines(notes).strip())
@@ -571,8 +627,11 @@ class Store:
         return rec if rec is not None and self.can_see(viewer, rec) else None
 
     def can_see(self, viewer, rec):
-        """Readable type, and an archived record only for its creator and administrators."""
-        return perms.can_read_type(viewer, self.schemas.get(rec["type"])) and (not rec["archived"] or perms.can_see_archived(viewer, rec))
+        """Whether this viewer may see this record: ``perms.can_see_record``, the one rule every read path goes through."""
+        def shared():                       # an owner without an account (erased): their choice is gone, so hidden (administrators only)
+            owner = self.users_lookup(rec["created_by"])
+            return owner is not None and Users.collection_visible(owner, rec["type"])
+        return perms.can_see_record(viewer, rec, self.schemas.get(rec["type"]), shared=shared)
 
     def can_edit(self, actor, rec):
         return perms.can_edit(actor, rec, self.schemas.get(rec["type"]))
@@ -584,11 +643,10 @@ class Store:
         return {s for s, sch in self.schemas.items() if perms.can_read_type(viewer, sch)}
 
     def visible_records(self, viewer):
-        """The records this viewer may see: the whole mapping (no copy) when nothing is restricted for them."""
+        """The records this viewer may see (``can_see``): the whole mapping (no copy) for administrators, who see everything."""
         if perms.is_admin(viewer):
             return self.records
-        ok = self.readable_types(viewer)
-        return {k: r for k, r in self.records.items() if r["type"] in ok and (not r["archived"] or perms.can_see_archived(viewer, r))}
+        return {k: r for k, r in self.records.items() if self.can_see(viewer, r)}
 
     def _get_checked(self, rid, actor):
         rec = self.readable(actor, rid)
@@ -620,7 +678,7 @@ class Store:
         self._notify(rid)
 
     def _update(self, rid, cur, actor, name, raw_fields, notes, owner, add_errors, write_additions):
-        fields, errors = self.clean_fields(cur["type"], raw_fields, existing=cur["fields"], viewer=actor)
+        fields, errors = self.clean_fields(cur["type"], raw_fields, existing=cur["fields"], viewer=actor, subject=self.subject_of(cur))
         errors.update(add_errors)
         if not (name or "").strip():
             errors["name"] = "required"
@@ -630,7 +688,10 @@ class Store:
             if not u:
                 errors["owner"] = "unknown user"
             elif u["uid"] != cur["created_by"]:
-                new_owner = u["uid"]
+                if ids.is_personal(rid):
+                    errors["owner"] = OWNER_KEPT
+                else:
+                    new_owner = u["uid"]
         if errors:
             raise ValidationError(errors)
         new = dict(cur, name=unix_newlines(name).strip(), fields=fields, notes=unix_newlines(notes).strip())
@@ -650,6 +711,23 @@ class Store:
             self._rewrite(new, actor, f"{rid}: {'archive' if flag else 'restore'} by {actor['uid']}")
             self.records[rid] = new
         self._notify(rid)
+
+    def set_field(self, rid, actor, key, raw, message):
+        """Change one field of one record as one commit with its own message (the scan page adds a barcode this way).
+        Same checks as a form save: the record must exist, the actor may edit it, the value must be valid. Returns False when
+        nothing changes."""
+        with self._write_lock():
+            cur = self._get_checked(rid, actor)
+            fields, errors = self.clean_fields(cur["type"], {key: raw}, existing=cur["fields"], viewer=actor, subject=self.subject_of(cur))
+            if errors:
+                raise ValidationError(errors)
+            if fields == cur["fields"]:
+                return False
+            new = dict(cur, fields=fields)
+            self._rewrite(new, actor, message)
+            self.records[rid] = new
+        self._notify(rid)
+        return True
 
     # ---- type definitions (admin)
     def used_options(self, type_slug, key):
@@ -822,6 +900,7 @@ class Store:
                 raise ValidationError({"owner": "unknown user"})
             value = u["uid"]
         ids = list(dict.fromkeys(ids))
+        kind = (ids_mod.is_personal(ids[0]), ids_mod.owner_of(ids[0])) if ids else (False, None)   # a bulk edit stays within one collection
         result = dict(changed=[], unchanged=[], skipped=[], errors={}, sha=None, action=action)
         desc = {"set": f"set {field}", "add": f"add to {field}", "remove": f"remove from {field}", "owner": f"owner to {value}",
                 "archive": "archive", "restore": "restore"}[action]
@@ -836,6 +915,9 @@ class Store:
                     continue
                 if rec["type"] != type_slug:
                     result["skipped"].append((rid, f"is not a {self.schemas[type_slug]['name'].lower()}"))
+                    continue
+                if (ids_mod.is_personal(rid), ids_mod.owner_of(rid)) != kind:
+                    result["skipped"].append((rid, "is in a different collection"))
                     continue
                 if not self.can_edit(actor, rec):
                     result["skipped"].append((rid, "not yours" if perms.setting(self.schemas[type_slug], "edit") == "owner" else "not allowed"))
@@ -883,29 +965,37 @@ class Store:
                     raw = current + ([item] if item not in current else [])
                 else:
                     raw = [x for x in current if x != item]
-            fields, errors = self.clean_fields(rec["type"], {key: raw}, existing=rec["fields"], viewer=actor)
+            fields, errors = self.clean_fields(rec["type"], {key: raw}, existing=rec["fields"], viewer=actor, subject=self.subject_of(rec))
             if errors:
                 raise ValidationError(errors)
             if fields == rec["fields"]:
                 return None
             return dict(rec, fields=fields, updated_at=now_iso())
         if action == "owner":
-            return None if rec["created_by"] == value else dict(rec, created_by=value, updated_at=now_iso())
+            if rec["created_by"] == value:
+                return None
+            if ids.is_personal(rec["id"]):
+                raise ValidationError({"owner": OWNER_KEPT})
+            return dict(rec, created_by=value, updated_at=now_iso())
         if action in ("archive", "restore"):
             flag = action == "archive"
             return None if bool(rec["archived"]) == flag else dict(rec, archived=flag, updated_at=now_iso())
 
-    def import_table(self, actor, type_slug, header, rows, mapping, dry_run=False):
-        """Import records from a parsed CSV/TSV file (see tableimport) into one type, for administrators, as ONE git commit that
-        ``undo`` can revert. Every row is checked first, under the write lock; if any row has an error nothing is written.
+    def import_table(self, actor, type_slug, header, rows, mapping, dry_run=False, personal=False):
+        """Import records from a parsed CSV/TSV file (see tableimport) into one type, as ONE git commit that ``undo`` can revert,
+        into the actor's personal collection (``personal``, where the type allows it) or the lab collection (where the actor may create).
+        Rows that name an ID update that record, if the actor may change it. Every row is checked first, under the write lock; if any
+        row has an error nothing is written.
         Returns the plan (tableimport.plan) plus ``sha`` (the commit, or None when nothing was written) and ``written`` (the IDs)."""
         from . import tableimport
         if type_slug not in self.schemas:
             raise NotFound(type_slug)
-        if not perms.is_admin(actor):
-            raise Forbidden("only administrators may import records")
+        if not perms.can_create_type_records(actor, self.schemas[type_slug], personal):
+            if personal:
+                raise Forbidden(f"{self.schemas[type_slug]['name']} records cannot be kept in a personal collection")
+            raise Forbidden(f"only administrators may add {self.schemas[type_slug]['name'].lower()} records")
         with (contextlib.nullcontext() if dry_run else self._write_lock()):
-            result = tableimport.plan(self, actor, type_slug, header, rows, mapping)
+            result = tableimport.plan(self, actor, type_slug, header, rows, mapping, personal)
             result.update(sha=None, written=[])
             todo = [e for e in result["entries"] if e["action"] in ("create", "update")]
             if dry_run or result["errors"] or not todo:
@@ -913,8 +1003,8 @@ class Store:
             t, order, paths, staged = now_iso(), self.order_of(type_slug), [], []
             for e in todo:
                 if e["action"] == "create":
-                    n = self._next_number(type_slug)
-                    rid = f"{self.schemas[type_slug]['prefix']}-{n}"
+                    n = self._next_number(type_slug, personal, actor["uid"])
+                    rid = ids.make(self.schemas[type_slug]["prefix"], n, personal, actor["uid"])
                     rec = dict(id=rid, type=type_slug, name=unix_newlines(e["name"]).strip(), created_by=actor["uid"], created_at=t,
                                updated_at=t, archived=False, legacy_id=n, fields=e["fields"], notes=unix_newlines(e["notes"]).strip())
                 else:
@@ -978,7 +1068,7 @@ class Store:
         return maintenance.rename_prefix(self, type_slug, new_prefix, dry_run)
 
     def _notify(self, rid):
-        self._backrefs = None                      # the reverse-link index is rebuilt on next use
+        self._backrefs = self._formers = None      # the reverse-link and former-ID indexes are rebuilt on next use
         for cb in self.on_change:
             cb(rid)
 
@@ -993,7 +1083,7 @@ class Store:
                         for target in r["fields"].get(f["key"], []):
                             index.setdefault(target, []).append((f["label"], r))
             for v in index.values():
-                v.sort(key=lambda x: (x[1]["type"], x[1]["legacy_id"]))
+                v.sort(key=lambda x: (x[1]["type"], ids.sort_key(x[1])))
             self._backrefs = index
         return list(self._backrefs.get(rid, []))
 
@@ -1007,9 +1097,8 @@ class Store:
         return formula.evaluate(fdef.get("expr", ""), rec, self, visible=visible, today=self.today())
 
     def visibility(self, viewer):
-        """A predicate telling which records this viewer may see (used by formulas, so a calculated value never leaks a hidden type)."""
-        ok = self.readable_types(viewer)
-        return lambda r: r["type"] in ok and (not r["archived"] or perms.can_see_archived(viewer, r))
+        """``can_see`` for one viewer, as a predicate (formulas and the search index take it, so neither leaks a hidden record)."""
+        return lambda r: self.can_see(viewer, r)
 
     # ---- history (read-only; see history.py)
     def recent_activity(self, viewer, limit=8):
