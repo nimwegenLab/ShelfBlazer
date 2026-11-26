@@ -176,6 +176,7 @@ class TestAppearance(Base):
             self.assertNotIn("set-cookie", c.get("/appearance", params={"name": bad, "next": "/"}).headers)
         for bad in ("//evil.example", "https://evil.example/x", "javascript:alert(1)"):
             self.assertEqual(c.get("/appearance", params={"name": "day", "next": bad}).headers["location"], "/", bad)
+        c.cookies.delete("appearance")                                   # newer httpx keeps both cookies and sends the first
         c.cookies.set("appearance", "<script>")
         self.assertNotIn("data-appearance", c.get("/").text)             # a tampered cookie falls back to auto
 
@@ -227,6 +228,7 @@ class TestLook(Base):
             self.assertNotIn("set-cookie", c.get("/look", params={"name": bad, "next": "/"}).headers)
         for bad in ("//evil.example", "https://evil.example/x"):
             self.assertEqual(c.get("/look", params={"name": "classic", "next": bad}).headers["location"], "/")
+        c.cookies.delete("look")
         c.cookies.set("look", "<script>")
         self.assertNotIn("data-look", c.get("/").text)
 

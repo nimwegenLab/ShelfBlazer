@@ -4,9 +4,11 @@ Three hidden records: one archived by its creator (D40), one in a type only admi
 whose owner unchecked "Visible to others" (design section 17.3). Bob requests every page and API that
 can show records; none may show their names, open them, link to them or count them. Personal collections add a third kind of hidden
 record to the same test. A new route fails ``test_every_route_is_covered`` until it is listed here: checked, or exempt with a reason."""
-import re
+import json, re
 
 from test_app import Base, STRAIN
+from test_mcp_app import McpBase
+from shelfblazer_app import mcp_tools
 
 SECRET_A, SECRET_T, SECRET_P = "SECRETARCHIVED", "SECRETTYPE", "SECRETPERSONAL"
 VAULT = {"name": "Vault", "prefix": "VT", "list_columns": ["id", "name"], "scan_fields": ["code"], "permissions": {"read": "admin"}, "fields": [
@@ -18,7 +20,7 @@ CODE = "4006381333931"
 # route path -> why it needs no check here (everything else must be requested by the tests below)
 EXEMPT = {
     "/login": "no records", "/logout": "no records", "/signup": "no records", "/reset/{token}": "no records", "/me": "no records",
-    "/me/password": "no records", "/look": "no records", "/appearance": "no records",
+    "/me/password": "no records", "/me/assistant": "no records (the person's own tokens)", "/look": "no records", "/appearance": "no records",
     "/admin/users": "administrators, who see everything", "/admin/users/{username}/entries": "administrators",
     "/admin/users/create": "administrators", "/admin/users/{username}/update": "administrators",
     "/admin/users/{username}/reset-link": "administrators", "/admin/passphrase": "administrators",
@@ -29,12 +31,13 @@ EXEMPT = {
     "/admin/types/{slug}/delete": "administrators", "/admin/types/{slug}/preview": "administrators",
     "/admin/types/{slug}/import": "only redirects to /t/{slug}/import",
     "/t/{slug}/new": "a form for a new record (its links are checked by test_a_link_to_a_hidden_record_is_refused)",
-    "/bulk/undo": "reverts the person's own bulk commit", "/me/collections": "the person's own settings",
+    "/me/tokens": "the person's own tokens", "/me/tokens/{tid}/revoke": "the person's own tokens", "/bulk/undo": "reverts the person's own bulk commit", "/me/collections": "the person's own settings",
+    "/help": "the shared text and the lab's own section; IDs in it link only to records the viewer may see (test_help_app)", "/admin/help": "administrators, who see everything",
     "/static": "files of the app", "/version": "no records", "/t/{slug}/import/template": "column titles of a type, no records",
 }
 
 
-class Matrix(Base):
+class Matrix(McpBase):
     def setUp(self):
         super().setUp()
         root, alice = self.users.get("root"), self.users.get("alice")
@@ -54,6 +57,23 @@ class Matrix(Base):
                           self.store.records[self.bobs_plasmid]["_version"])
         self.bob = self.client("bob")
         self.covered = set()
+        self.covered_tools = set()
+        self.mcp = self.rpc("bob")
+
+    def tool(self, tool_name, /, **args):
+        """Bob's agent calls a tool: (is_error, answer). The answer, as text, must show nothing of the hidden records."""
+        self.covered_tools.add(tool_name)
+        err, out = self.mcp.call(tool_name, **args)
+        text = (out if isinstance(out, str) else json.dumps(out)).lower()
+        if isinstance(out, dict) and out.get("notes"):          # the notes are his own words, which may mention any ID (as on the record page)
+            text = text.replace(json.dumps(out["notes"]).lower()[1:-1], "")
+        asked = [x for v in args.values() for x in (v.values() if isinstance(v, dict) else [v]) if isinstance(x, str) and x]
+        for word in {w for v in asked for w in v.split()} | set(asked):      # an answer may repeat what he asked for, never more
+            if len(word) >= 4:
+                text = text.replace(word.lower(), "")
+        for token in (SECRET_A, SECRET_T, SECRET_P, "secret notes", "SECRET FILE", "SECRET OWN FILE", self.hidden_a, self.hidden_t, self.hidden_p):
+            self.assertNotIn(token.lower(), text, f"{tool_name} {args}")
+        return err, out
 
     def get(self, path, **kw):
         self.covered.add(path.split("?")[0])
@@ -156,8 +176,67 @@ class Matrix(Base):
         value, _ = self.store.compute(self.store.records[self.bobs_plasmid], fdef, self.users.get("alice"))
         self.assertEqual(value, 2)                                  # the creator still counts her archived and her personal strain
 
+    def test_the_mcp_tools_never_show_or_change_them(self):
+        a, t, p = self.hidden_a, self.hidden_t, self.hidden_p
+        before = {rid: dict(rec) for rid, rec in self.store.records.items()}
+        _, types = self.tool("list_types")
+        self.assertNotIn("vault", [x["slug"] for x in types["types"]])
+        for coll in ("lab", "mine", "others", "any"):
+            for q in ("secretarch", "secretpers", "secrettyp", a, t, p, CODE, ""):
+                for arch in (False, True):
+                    _, res = self.tool("search_records", text=q, collection=coll, archived=arch)
+                    self.assertFalse({r["id"] for r in res["results"]} & {a, t, p}, (coll, q, arch))
+        self.assertTrue(self.tool("search_records", type="vault")[0])
+        # conditions, chosen fields, sorting and counts work on what he may see only: the hidden strains both link to his plasmid
+        for coll in ("lab", "any"):
+            _, res = self.tool("search_records", type="strain", collection=coll, archived=True, where={"plasmid": f"={self.bobs_plasmid}"})
+            self.assertEqual(res["total"], 0, coll)
+            _, res = self.tool("search_records", type="strain", collection=coll, archived=True, group_by="plasmid")
+            self.assertEqual(res["groups"], [], coll)
+            for by in ("owner", "collection", "type"):
+                _, res = self.tool("search_records", collection=coll, archived=True, group_by=by)
+                self.assertEqual(res["total"], 1, (coll, by))                                          # his plasmid only
+            _, res = self.tool("search_records", collection=coll, archived=True, sort="-updated", fields=["name", "updated_at"])
+            self.assertEqual([r["id"] for r in res["results"]], [self.bobs_plasmid])
+            _, res = self.tool("search_records", type="strain", collection=coll, archived=True, where={"name": "contains:secret"})
+            self.assertEqual(res["total"], 0)
+        self.assertTrue(self.tool("search_records", type="vault", where={"code": "not empty"})[0])
+        for rid in (a, t, p):
+            self.assertTrue(self.tool("get_record", id=rid)[0])
+            self.assertTrue(self.tool("get_record", id=rid.lower())[0])
+            self.assertTrue(self.tool("update_record", id=rid, version=before[rid]["_version"], name="x")[0])
+            self.assertTrue(self.tool("archive_record", id=rid)[0])
+            self.assertTrue(self.tool("restore_record", id=rid)[0])
+            self.assertTrue(self.tool("check_record", type="strain", name="x", id=rid)[0])
+        self.assertTrue(self.tool("check_record", type="vault", name="x")[0])
+        self.assertTrue(self.tool("create_record", type="vault", name="x")[0])
+        self.assertTrue(self.tool("import_table", type="vault", text="Name\nx\n", apply=True)[0])
+        self.assertEqual(self.tool("get_record", id=self.bobs_plasmid)[1]["linked_from"], [])               # her strains are hidden from him
+        for uri in ("conventions://vault", "schema://vault"):
+            self.assertIsNotNone(self.mcp.read(uri)[0])
+        # a link to a hidden record, and a name equal to a hidden record's, tell him nothing
+        _, r = self.tool("check_record", type="strain", name="x", fields={"plasmid": a})
+        self.assertEqual(set(r["errors"]), {"plasmid"})
+        _, r = self.tool("create_record", type="strain", name="x", fields={"plasmid": p})
+        self.assertFalse(r["created"])
+        for name in (f"{SECRET_A} strain", f"{SECRET_P} strain"):
+            _, r = self.tool("check_record", type="strain", name=name)
+            self.assertEqual(r["findings"], [], name)
+        _, r = self.tool("import_table", type="strain", text=f"ID\tName\n{a}\tx\n{t}\tx\n{p}\tx\n", columns={"ID": "id", "Name": "name"}, apply=True)
+        self.assertEqual((r["applied"], r["errors"]), (False, 3))
+        _, r = self.tool("import_table", type="strain", text=f"Name\n{SECRET_A} strain\n", apply=False)
+        self.assertEqual(r["rows"][0]["warnings"], [])
+        self.assertTrue(self.tool("undo_import", commit=self.sha)[0])
+        self.assertEqual({rid: dict(rec) for rid, rec in self.store.records.items()}, before)
+
+    def test_every_tool_is_covered(self):
+        """A new tool fails here until the test above requests it for the hidden records."""
+        self.test_the_mcp_tools_never_show_or_change_them()
+        self.assertEqual(self.covered_tools, set(mcp_tools.TOOLS), "a new tool: check it against the hidden records in test_the_mcp_tools_never_show_or_change_them")
+
     def test_every_route_is_covered(self):
-        checked = {"/", "/t/{slug}", "/api/records", "/r/{rid}", "/r/{rid}/edit", "/r/{rid}/at/{sha}", "/files/{path:path}", "/scan",
+        checked = {"/mcp",       # every tool is requested for the hidden records in test_the_mcp_tools_never_show_or_change_them
+                   "/", "/t/{slug}", "/api/records", "/r/{rid}", "/r/{rid}/edit", "/r/{rid}/at/{sha}", "/files/{path:path}", "/scan",
                    "/scan/link", "/r/{rid}/archive", "/r/{rid}/files", "/r/{rid}/files/delete", "/t/{slug}/export",
                    "/t/{slug}/export/download", "/t/{slug}/bulk", "/t/{slug}/bulk/apply", "/move", "/move/confirm", "/move/preview",
                    "/t/{slug}/import", "/t/{slug}/import/preview", "/t/{slug}/import/apply", "/t/{slug}/import/done/{sha}"}

@@ -99,6 +99,8 @@ def leaked_keys(page):
 
 
 class Base(unittest.TestCase):
+    app_options = {}                 # keyword arguments for create_app (a test class that needs the MCP endpoint sets mcp=True)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo, self.inst = os.path.join(self.tmp.name, "repo"), os.path.join(self.tmp.name, "inst")
@@ -111,7 +113,7 @@ class Base(unittest.TestCase):
             fh.write("[]")
         subprocess.run(["git", "init", "-q", "-b", "main", self.repo], check=True)
         git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
-        self.app = create_app(self.repo, self.inst)
+        self.app = create_app(self.repo, self.inst, **self.app_options)
         self.users = self.app.state.users
         self.store = self.app.state.store
         self.users.create("root", "Root Admin", "admin", PW)

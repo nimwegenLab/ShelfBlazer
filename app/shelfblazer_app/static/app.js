@@ -36,14 +36,15 @@ document.addEventListener("click", function (e) {
   if (e.metaKey || e.ctrlKey || e.shiftKey) window.open(url, "_blank"); else window.location.href = url;
 });
 
-// Copy to clipboard: <button data-copy="#id"> copies the text of that element (a one-time link, say).
+// Copy to clipboard: <button data-copy="#id"> copies the text of that element (a one-time link, an access token, a command). The result is
+// said in the .copy-note next to the button, or in #copy-note.
 document.addEventListener("click", function (e) {
   var b = e.target.closest("button[data-copy]");
   if (!b) return;
-  var src = document.querySelector(b.getAttribute("data-copy")), note = document.getElementById("copy-note");
+  var src = document.querySelector(b.getAttribute("data-copy")), note = b.parentNode.querySelector(".copy-note") || document.getElementById("copy-note");
   if (!src) return;
   var text = src.textContent.trim();
-  function said(ok) { if (note) note.textContent = ok ? "Copied." : "Could not copy: select the link and copy it by hand."; }
+  function said(ok) { if (note) note.textContent = ok ? "Copied." : "Could not copy: select it and copy it by hand."; }
   function fallback() {                                          // http pages and old browsers have no clipboard API
     var t = document.createElement("textarea");
     t.value = text; t.setAttribute("readonly", ""); t.style.position = "fixed"; t.style.opacity = "0";

@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}Entries of {{ person.name }}{% endblock %}
-{% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <a href="/admin/types">Types</a></p>
+{% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <a href="/admin/types">Types</a> · <a href="/admin/help">Help text</a></p>
 <h1>Entries of {{ person.name }} <span class="muted count">{{ total }}</span></h1>
 {% if not sections %}<p class="muted">{{ person.name }} has not created any entries.</p>{% endif %}
 {% for sec in sections %}<section class="userentries" data-hue="{{ type_hue(sec.slug) }}">

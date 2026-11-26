@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}Scan{% endblock %}
-{% block body %}<div class="hero"><h1>Scan</h1></div>
+{% block body %}<div class="hero"><h1>Scan <a class="helplink" href="/help#scan">Help</a></h1></div>
 <p class="codes">{% for c in codes %}<code class="rid">{{ c }}</code> {% else %}<span class="muted">Nothing was read.</span>{% endfor %}</p>
 {% if hits %}<p>{{ hits|length }} records carry {{ 'this code' if codes|length == 1 else 'these codes' }}:</p>
 <div class="tablewrap"><table><thead><tr><th>ID</th><th>Name</th></tr></thead><tbody>

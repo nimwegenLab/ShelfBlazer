@@ -10,6 +10,8 @@ The look is settled: one flat style (warm paper, hairlines, dense, one accent co
 Still open: forms with inline help and grouped sections, a quick-view side panel, a column picker for each person (the type page sets the columns for everybody), an icon choice per type.
 
 ### Possible features (none started)
+- **Administrator MCP** (design 18.3): administrator tools on a separate `/mcp/admin` for an administrator's own agent (types, users, bulk work), with the same two-step writes. The member endpoint is built so this is an addition.
+- **Checks, next steps:** tune each group's rules on its curated data; a similarity score on names if the rules prove too rigid (design 19.5); a rules editor on the Types page instead of editing the file.
 - **Groups** for permissions (for example "chem-team") if roles are not enough; today a type is open to all, or to administrators.
 - **`shelfblazer purge`** (design 16.4): remove a record, a file or a text from the history for good. Archive is the only removal in the app, and a type with any records (archived included) cannot be removed until this exists.
 - **History extras:** difference against the previous version, a "restore this version" button, more than the last 30 entries.

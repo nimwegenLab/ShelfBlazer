@@ -75,7 +75,8 @@ class DnaValidation(Base):
         self.c = self.client("alice")
 
     def save(self, seq):
-        return self.post(self.c, "/t/vector/new", {"name": "p", "f_sequence": seq})
+        self.n = getattr(self, "n", 0) + 1                                  # a new name each time: the same name is a possible duplicate
+        return self.post(self.c, "/t/vector/new", {"name": f"p{self.n}", "f_sequence": seq})
 
     def test_accepts_dna_whitespace_iupac_and_fasta_header(self):
         for ok in ("ACGT", "acgtn rykm\r\nswbd hvu", ">pOSIP (CamR, 6223 bps)\r\ngaattc\r\nggatcc", ""):
@@ -97,7 +98,8 @@ class DoiValidation(Base):
         self.c = self.client("alice")
 
     def save(self, ref):
-        return self.post(self.c, "/t/vector/new", {"name": "p", "f_references": ref})
+        self.n = getattr(self, "n", 0) + 1
+        return self.post(self.c, "/t/vector/new", {"name": f"p{self.n}", "f_references": ref})
 
     def stored(self):
         return next(r for r in self.store.records.values() if r["type"] == "vector")["fields"].get("references")

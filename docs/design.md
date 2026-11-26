@@ -110,6 +110,9 @@ physical storage mapping, electronic notebook features, and any setting that nee
 | D43 | **Lab records into a personal collection: an administrator command (built 2026-11-24).** The app still never moves a lab item to a personal collection (D42). For the cases where lab records really are one person's own (a person's boxes imported with the lab stock), `shelfblazer move-to-personal <username> <IDs or ranges> [--yes]` moves that person's own records, in one commit by the maintenance account: new personal IDs, the lab ID kept in `former_ids` (it still opens the record), files and mentions follow, the lab numbers stay unused. Refused for someone else's records, types without personal collections, and records that something staying links to. Preview without `--yes` | User request |
 | D44 | **Table import for everyone who may add records (built 2026-11-24).** The CSV/TSV import (upload, columns, check, one undoable commit) moves from the type admin page to `/t/<type>/import`, linked as *Import…* beside *+ New* on list pages and from the new-record form. It follows the rules of the record form: a person imports into the collections they may add to (lab collection: the type's `create`; own collection: `permissions.personal`), a row with an ID updates that record only if they may edit it, a record they may not see answers "does not exist" and is never named as a duplicate. The page of a finished import is for the person who ran it and administrators. No separate import permission | User decision |
 | D45 | **Personal numbers are per person (built 2026-11-25).** Each person counts their own personal items from 1 (`ST-P1` for Alice and for Bob); the key of an item is the ID with its owner (`ST-P1~U7F3K2QA`), used in file names, links, addresses and history; people see `ST-P1`, or `ST-P1[Alice]` for someone else's. A short personal ID is read for the person it is typed by or written for. Replaces the shared counter of D42: people did not like to see other people's numbers in theirs. Section 17.2 | User request |
+| D46 | **MCP endpoint for members (built 2026-11-25, off by default).** `/mcp` inside the app (Model Context Protocol, streamable HTTP, JSON answers, no server-side sessions) lets a person's own Claude Code read and manage records with that person's rights (section 18). Personal access tokens, created on the account page, shown once, stored hashed. Every tool runs as the token's owner with the role forced to `user`, so an administrator's member token sees what a member sees. Commits say "(via MCP)". Enabled only with `SHELFBLAZER_MCP=1`, and not before the independent review of the authentication code (ROADMAP) | User decision |
+| D47 | **Checks before saving: duplicates, suggested fixes, convention warnings (built 2026-11-25).** When a record is created, edited or imported, `checks.review` compares it with the records the person may see and with the conventions the group wrote down, and the form shows what it found once, with *Save anyway*. It **never blocks**: a repeat can be legitimate (a new stock of the same strain), the person decides. Every type gets a same-name check; a group refines it per type in `config/checks/<type>.yaml` (data, not code: what counts as "the same", spelling tables, linked records written in a name). The code holds no group-specific knowledge. The record form, the import preview and the MCP tool `check_record` all call the same function (section 19). |
+| D48 | **Help page, with the lab's part in the data repository (built 2026-11-25).** `/help` is one template whose text follows the instance: examples (type name, ID prefix, a link field) are read from the type definitions, and the parts on personal collections, scanning, sequence search and the MCP endpoint appear only where those are on, so the shared text never names a lab's types. The lab's own section is `config/help.md` (Markdown subset of notes; its first heading is the section's title; shown right after the summary; no file, no section), edited by administrators on `/admin/help` with a preview, one commit per save. Replaces a how-to document record per lab. |
 
 ---
 
@@ -231,7 +234,7 @@ Enforced **server-side** on every write. Only the app process has write access t
 
 | Route | Who | Content |
 |---|---|---|
-| `/login`, `/signup`, `/me` | all | Sign in; sign up with shared passphrase; change own password |
+| `/login`, `/signup`, `/me` | all | Sign in; sign up with shared passphrase; account page in tabs: General, AI assistant (`/me/assistant`, with MCP on), Password (`/me/password`) |
 | `/` | all | Global search (autofocus; an exact ID jumps to the record on Enter; results filter while typing; a fuzzy switch); results as one table per type, top 10 each with "see all N"; tiles for the types with counts; recent activity. Built as planned, except "+ new" on the tiles (dropped) |
 | `/t/<type>` | all | Fuzzy search (typos and partial IDs; live), sortable columns (asc/desc), pagination, "owner" and "archived" filters, table or cards, bulk-edit toolbar. **Not built:** per-field filters generated from the schema, a column picker for users (admins choose the columns on the type page), CSV export |
 | `/r/<ID>` (planned as `/t/<type>/<ID>`) | all; edit for owner/admin | Fields, notes, files (per File field), **Referenced by**, history (git log; each entry but the newest, which is the current record, opens that version at `/r/<ID>/at/<commit>`), edit / archive |
@@ -526,3 +529,83 @@ Two places rather than a switch on one list, because most people are not expert 
 | 2. Move to the lab collection (single and bulk, one page with the warning, linked items moved or relinked) | Round trip with files; old ID and old links open the record; history across the move; admin undo |
 | 3. Interface (section 17.6) and table import into a personal collection | Tried on a copy of real data, on a phone and a desktop. Done |
 | 4. Docs: README, CHANGELOG (Upgrading), this section marked built | Done |
+
+## 18. MCP endpoint for members (D46, built 2026-11-25)
+
+### 18.1 Shape
+- `/mcp` is served by the app itself (Python `mcp` SDK, mounted in the FastAPI app, `stateless_http` with JSON answers: nothing to keep between requests, nothing special for a reverse proxy). Tools call the `Store` in the app's process: same write lock, same search index, same permission checks. There is no second API.
+- Off unless the environment variable `SHELFBLAZER_MCP=1` is set; then the account page has an *AI assistant* tab (`/me/assistant`, also in the menu above Help) with the setup steps and the tokens. Without it `/mcp` answers 404 and nobody can create a token.
+- **The actor is the token's owner as a member**: `role` is forced to `user` for every tool, so even an administrator's member token has member rights and a member's view (no hidden records). Their commits are authored by their user ID as usual, with ` (via MCP)` added to the subject.
+
+### 18.2 Tokens
+- Created on `/me/assistant` with the account's password (a stolen session cookie alone cannot turn into a token that outlives the session): a name, an expiry (90 days by default, one year at most), shown once. `sbt_` plus 32 random bytes; only the SHA-256 is stored, in `users.json` with the account (id, name, created, expires, last used, scope). Never in git, logs or URLs.
+- **Out of the shell history.** The account page does not print a command that contains the token: it shows `read -rs SBT` (paste at a hidden prompt) and then `claude mcp add ... --header "Authorization: Bearer $SBT"; unset SBT`. A shell saves the line as typed, with `$SBT` unexpanded. What remains: Claude Code stores the header in its own configuration file (a plain file in the person's home, to be protected like an SSH key), and the argument is visible to other users of the same computer in the process list while the command runs; both are acceptable on a personal computer and are said in the README. A short token life (90 days by default) limits the damage of a copy.
+- At most 5 live tokens per person. Revoked one by one on `/me/assistant`; all revoked when the account is deactivated, erased, an administrator makes a reset link for it, or its password is set or reset, including people changing their own password (what they do when they think someone got in).
+- A valid token always works: tokens cannot be guessed (256 random bits), so the throttle exists only to stop a sender that keeps trying wrong ones. Wrong tokens have their own budget per address (the 20th within 5 minutes, and those after it, get 429 instead of 401); they never lock a valid token or anybody's sign-in, so one agent retrying an expired token cannot lock out a shared address.
+- `scope`: `member` or `admin`. An `admin` token is created on `/me/assistant` by administrators only, lasts 30 days at most, and works only while its owner is an administrator (checked on every call).
+
+### 18.3 Tools and resources
+Registry in `shelfblazer_app/mcp_tools.py`: each tool has a required scope; `/mcp` offers the member tools to every token, and administrator tools (none yet) would be on a separate `/mcp/admin` that needs an administrator token.
+
+| Tool | What |
+|---|---|
+| `list_types` | readable types, their fields and options, where the person may add records |
+| `search_records` | the list query: type, text, collection (`lab`, `mine`, `others`, `any`), owner, archived; paged, with the total. Also `where` (conditions on fields: empty, not empty, contains, equal, `<`/`>` for numbers and dates, including `created_at`/`updated_at`), `fields` (values returned with each result), `sequence` and `mismatches` (the list page's sequence search), `sort` (ID, name, created, updated or a field; `-` for descending) and `group_by` (counts per value instead of records). Only fields the record page shows; links only to records the person may see, so conditions and counts reveal nothing hidden |
+| `get_record` | fields, notes, links both ways, file names (no contents), recent history, and the `version` |
+| `check_record` | validation errors plus `checks.review` findings (duplicates, fixes, warnings); writes nothing |
+| `create_record` | into the lab or one's own collection; with errors, or a possible duplicate not confirmed with `confirm_duplicates`, nothing is written |
+| `update_record` | named fields only, needs the `version` read by `get_record` (a newer edit is a conflict); findings are those the change adds |
+| `archive_record`, `restore_record` | reversible |
+| `import_table` | text with a header; `apply: false` previews, `apply: true` writes one commit, or nothing if a row has an error |
+| `undo_import` | the existing undo, for one's own import or bulk commit |
+
+Resources: `conventions://<type>` (the `guidance` of the type's rules file, `config/checks/<type>.yaml`) and `schema://<type>`. Server instructions tell the agent to read the conventions, call `check_record` first, never create a possible duplicate without the person's confirmation, and show the import preview before applying it.
+
+**Left out on purpose:** move to the lab collection (cannot be undone by the person), bulk edit and bulk archive (the import with IDs covers bulk changes, with a preview), attaching or removing files, "Visible to others" and other account settings, passwords and tokens, scan, export. Each is a web page the person already has.
+
+### 18.4 Guard
+`test_visibility_matrix.py` requests every tool for each hidden record (archived by someone else, a type only administrators read, a personal collection not shared) and lists `/mcp` among the covered routes; `test_every_tool_is_covered` fails when a tool is added without being requested there.
+
+### 18.5 Before it is switched on for a group
+- The authentication code for tokens (`Users.create_token`, `authenticate_token`, the gateway in `mcp_server.py`) was reviewed on 2026-11-25 and its findings fixed (commit 313bdd0: wrong tokens have their own budget and never lock valid ones out, creating a token asks for the password, any password change revokes the person's tokens). An independent review of the whole authentication code (ROADMAP) remains parked.
+- Tell members that what their agent reads goes to their Claude account (or whatever service the agent talks to), and that nothing confidential belongs in a personal collection (17.3).
+
+## 19. Checks before saving (D47, built 2026-11-25)
+
+### 19.1 Contract
+- `checks.review(store, viewer, type_slug, draft, rid=None)` returns a list of `Finding(kind, message, field, suggestion, records, detail)`; kind is `duplicate`, `fix` or `warning`. It writes nothing and is the only entry point: the new and edit forms (through `Store.review`, which cleans the fields first), the import preview (one call per row) and the MCP tool `check_record` use it, so a person and an agent are told the same thing.
+- **Warn, never block.** A finding is shown, the person can save anyway. The nearest thing to a block is the MCP's `create_record`, which asks the agent to show a possible duplicate to the person and to repeat with `confirm_duplicates` (agents have no screen to click on).
+- **Only what the viewer may see.** Records are compared through `store.can_see`: a hidden record (archived by someone else, a type only administrators read, another person's personal collection) is never named, and its absence changes nothing visible. The comparison is with everything the viewer can see, so a new personal item is compared with the lab collection and the person's own items.
+- **Archived records are compared and marked.** A match with an archived record is useful (the physical sample was most likely thrown away; restoring the old record may be what the person wants) and says so.
+- On an edit only what the edit **adds** is reported, so a record that already had a twin can be corrected without being nagged. A record is never its own duplicate.
+
+### 19.2 The form
+- A POST with findings is answered by the same form (status 200) with a *Check before saving* panel: duplicates link to the existing records, a suggested fix has an *Apply* button that fills its field (`checks.js`, loaded only on that page), a warning has no button. Everything typed is kept.
+- *Save anyway* posts a hidden `confirm` value, the signature of the findings the person was shown. If the findings are different when the form is posted again (someone else created a record meanwhile, the person changed the name), the panel is shown again instead of saving. Nothing is stored between the two requests.
+- The panel is not shown when the form has errors (the errors come first).
+
+### 19.3 Rules files
+- `config/checks/<type>.yaml` in the data repository, JSON-compatible YAML like the type definitions, optional. The format is documented in the docstring of `packages/shelfblazer/checks.py` and summarised in the README.
+- Pieces: `tables` (named lists of regular-expression replacements), `extract` (a named part of a field), `duplicate_keys` (two records are possible duplicates when every part of one key is equal after normalising; `required`, `min_filled`, `set` for words in any order, `ref` for linked IDs), `fields.<key>.fix / warn / max_length`, `mentions.<ref field>` (a linked record's name written in a name or note but not linked, with a bracket convention), `agree` (two extracts must agree) and `guidance` (Markdown for people and agents, offered by the MCP as `conventions://<type>`).
+- Built-in normalisers: `casefold`, `accents`, `space`, `alnum`, `dna` (a sequence and its reverse complement compare equal; shorter than 20 bases is ignored).
+- Without a file a type has one key: the name, compared without case, accents or repeated spaces. A file that cannot be read, or has a mistake, is reported on the Types page (`store.schema_warnings`) and the type falls back to that default: a rules file never stops a save.
+- A key matches on **several parts or none**: two records with only a background in common are not duplicates, so a key can require two filled parts (`min_filled`). This was the main source of noise when tried on a copy of real data.
+- Rules are data on purpose. What a lab writes in a strain name is the lab's business; its file, and the scripts that produce and measure it, stay in the private repository, and the public code only knows "a part", "a table" and "a key".
+
+### 19.4 Import
+- The import preview shows, per row that would be written, the same findings: "possible duplicate of ID name (archived)", "Label: suggested value", the warnings, and "same ... as line N" between rows of the same file. Nothing blocks the import; the person reads the preview and decides.
+- A row that updates a record reports only what the change adds. A record the person may not read is never named, whether in the file's rows or in the data.
+
+### 19.5 Cost and limits
+- Keys are computed once per type and kept in an index that is rebuilt when the store changes (`on_change`); a check is a lookup, not a scan of every record. Fine for the few thousand records this design expects.
+- Fuzziness comes from the normalisers and tables (spelling, accents, equivalent names), not from an edit-distance score: every finding can say exactly why it matched, and a group can fix a false positive by editing its file. A similarity score on the name is a possible addition if the rules prove too rigid.
+- Not checked: attachments, files, computed fields.
+
+---
+
+## 20. Help page (D48, built 2026-11-25)
+- **Route and sources.** `/help` (`app/shelfblazer_app/help.py`, `templates/help.html`) is behind the login. `shelfblazer/helptext.py` reads and writes `config/help.md`; the file is read on every request (small, and may be edited outside the app).
+- **Follows the instance.** The type name, the ID prefix and a link field in the examples come from the person's readable types; sections for personal collections, scanning, sequence search and the assistant exist only when on. A test renders the page for an instance of non-biology types and fails if the shared text names strains, plasmids, primers or reagents.
+- **Lab section.** Title = first `# ` heading (else "In this lab"); IDs link only to records the viewer may see (the notes renderer); HTML is escaped. Editor: `/admin/help` (administrators), starter text when empty, preview, 20,000 characters at most, one commit (`help text: change|remove`).
+- **Entry points.** *Help* above the person's own row in the sidebar (and the phone menu); *Help* links from the new-record form, the edit-refusal note, *My collection* lists, the move, import and scan pages. A test checks that every `/help#…` in a template has its section.
+- **Where it was decided.** Plan and draft text: `private/planning/`.

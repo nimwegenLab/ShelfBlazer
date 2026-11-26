@@ -147,7 +147,7 @@ def register(app, c):
             return preview_page(request, slug, text, header, mapping, res, status=422 if res["errors"] else 200, collection=collection)
         return RedirectResponse(f"/t/{slug}/import/done/{res['sha'][:12]}", 303)      # a refresh must not import the file again
 
-    SUBJECT = re.compile(r"^bulk: import (\d+) new, (\d+) updated \((\d+) (\S+) records\)$")
+    SUBJECT = re.compile(r"^bulk: import (\d+) new, (\d+) updated \((\d+) (\S+) records\)(?: \(via \w+\))?$")
 
     @app.get("/t/{slug}/import/done/{sha}", response_class=HTMLResponse)
     async def import_done(request: Request, slug: str, sha: str):

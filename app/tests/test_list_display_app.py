@@ -89,7 +89,7 @@ class TestRowsPrefsStorageAndForm(Base):
         self.assertIn("Freezer_1_rack12_Strain_Collec", c.get(f"/r/{rid}/edit").text)  # the form edits the stored text
         self.assertIn(rid, c.get("/?q=Freezer_1_rack12").text)                       # and it is still searchable
         self.assertEqual(self.store.records[rid]["fields"]["storage"], FULL)         # data untouched
-        self.create("alice", name="s2", storage="Box 5 Well A1")                     # short text typed by a person is shown as is
+        self.create("alice", name="s3", storage="Box 5 Well A1")                     # short text typed by a person is shown as is
         self.assertIn(">Box 5 Well A1<", c.get("/t/strain").text)
 
     def test_storage_sorts_naturally(self):

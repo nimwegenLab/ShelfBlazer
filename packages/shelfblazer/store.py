@@ -5,7 +5,7 @@ written, and committed to git with the acting user as author. The in-memory ``re
 """
 import contextlib, datetime, fcntl, glob, json, logging, os, re, shutil, subprocess, threading
 
-from . import builtin, fields as fieldrules, formula, history, ids, perms, schema_edit, uploads
+from . import builtin, checks, fields as fieldrules, formula, history, ids, perms, schema_edit, uploads
 from . import ids as ids_mod                                                  # bulk_apply has a parameter called ids
 from .auth import UID_RE, Users                                            # a user ID; Users.collection_visible
 from .errors import Conflict, Forbidden, NotFound, StoreError, ValidationError
@@ -191,6 +191,10 @@ class Store:
                 msg = f"type '{slug}': unknown color {sch['color']!r} ignored (use one of: {', '.join(TYPE_COLORS)})"
                 self.schema_warnings.append(msg)
                 log.warning(msg)
+        self.check_rules, problems = checks.load_rules(self.repo, self.schemas)    # duplicate and input checks (checks.py)
+        for msg in problems:
+            self.schema_warnings.append(msg)
+            log.warning(msg)
 
     def type_icon(self, slug):
         """The icon of a type: its "icon" setting, else the first instance's default (builtin.py), else a box."""
@@ -254,6 +258,8 @@ class Store:
         self.git("add", "--", *paths)
         if not self.git("status", "--porcelain", "--", *paths).strip():
             return
+        if actor.get("via"):                                    # a change made through another door than the web pages (the MCP endpoint)
+            message += f" (via {actor['via']})"
         args = ["commit", "-q", "-m", message] + (["-m", body] if body else [])
         self.git(*args, author=author_of(actor))
 
@@ -611,6 +617,22 @@ class Store:
             self.records[rid] = rec
         self._notify(rid)
         return rid
+
+    def review(self, actor, type_slug, name, raw_fields, notes="", rid=None, personal=False):
+        """The checks (checks.py) on a record as typed in a form: [Finding], nothing written. A draft that does not validate gives [] (saving
+        reports why). For an existing record (``rid``) only what the edit adds is reported, not what the stored record already had."""
+        if type_slug not in self.schemas or not perms.can_read_type(actor, self.schemas[type_slug]):
+            raise NotFound(type_slug)
+        cur = self._get_checked(rid, actor) if rid else None
+        fields, errors = self.clean_fields(type_slug, raw_fields, existing=cur["fields"] if cur else None, viewer=actor,
+                                           subject=self.subject_of(cur) if cur else (personal, actor["uid"]))
+        if errors or not (name or "").strip():
+            return []
+        found = checks.review(self, actor, type_slug, dict(name=unix_newlines(name).strip(), fields=fields, notes=unix_newlines(notes).strip()), rid)
+        if cur:
+            before = checks.review(self, actor, type_slug, cur, rid)
+            found = [f for f in found if not any(f.same_as(b) for b in before)]
+        return found
 
     def person_name(self, uid):
         """Display name for a user ID stored in a record ("former member" when the account was erased or never existed)."""

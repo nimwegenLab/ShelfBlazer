@@ -1,0 +1,4 @@
+{# The head of every tab of the account page: who you are, the tabs, and an error from a form of this tab. #}
+{% macro header() %}<h1>{{ user.name }}</h1><p class="muted">Username <code>{{ user.username }}</code> · role {{ user.role }}</p>
+<div class="tabs" role="navigation" aria-label="Account">{% for key, href, label in [("general", "/me", "General"), ("assistant", "/me/assistant", "AI assistant"), ("password", "/me/password", "Password")] if key != "assistant" or mcp_enabled %}<a href="{{ href }}"{% if tab == key %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</div>
+{% if error %}<div class="flash err">{{ error }}</div>{% endif %}{% endmacro %}

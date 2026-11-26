@@ -9,7 +9,7 @@ partly filled column never wipes data). Rows are checked with the same rules as 
 import csv, io, re
 from collections import Counter
 
-from . import fields as fieldrules, ids, perms
+from . import checks, fields as fieldrules, ids, perms
 
 MAX_BYTES = 1_000_000                  # the pages send the file text back and forth in forms, which have a 4 MB limit
 MAX_ROWS = 5000
@@ -145,6 +145,30 @@ def _allowed(store, slug, f):
     return ", ".join(names[:SHOW_OPTIONS]) + more
 
 
+def _check_row(store, actor, slug, rules, draft, cur, line, file_keys):
+    """Warnings (text) from the checks (checks.py) for one row that would be written: against the records the person may see, and against the
+    rows before it in the file. For an update only what the change adds is reported."""
+    out = []
+    found = checks.review(store, actor, slug, draft, cur["id"] if cur else None)
+    if cur:
+        before = checks.review(store, actor, slug, cur, cur["id"])
+        found = [f for f in found if not any(f.same_as(b) for b in before)]
+    for f in found:
+        if f.kind == "duplicate":
+            r = f.records[0]
+            out.append(f"possible duplicate of {r['id']} {r['name']}{' (archived)' if r['archived'] else ''}: {f.detail}")
+        elif f.kind == "fix":
+            out.append(f"{checks.field_label(store, slug, f.field)}: suggested \u201c{f.suggestion}\u201d")
+        else:
+            out.append(f.message)
+    if rules:
+        for k in checks.keys_of(draft, rules):
+            if k in file_keys and file_keys[k] != line:
+                out.append(f"same {rules['keys'][k[0]]['label'].removeprefix('same ')} as line {file_keys[k]}")
+            file_keys.setdefault(k, line)
+    return out
+
+
 def plan(store, actor, slug, header, rows, mapping, personal=False):
     """Check every row, write nothing. -> dict(entries, created, updated, unchanged, errors, warnings).
     ``personal``: the rows go into the actor's personal collection (new records only; IDs in the file must be the actor's own personal
@@ -162,11 +186,8 @@ def plan(store, actor, slug, header, rows, mapping, personal=False):
     if ID not in chosen and NAME not in chosen:
         raise FileProblem("assign one column to Name (to create records) or to ID (to update them)")
     fdefs = {f["key"]: f for f in store.schemas[slug]["fields"]}
-    names_before = {}
-    for rec in store.visible_records(actor).values():                 # a name the person cannot see is not a duplicate they may be told about
-        if rec["type"] == slug and ids.is_personal(rec["id"]) == personal and (not personal or rec["created_by"] == actor["uid"]):
-            names_before.setdefault(rec["name"].casefold(), rec["id"])
-    seen_ids, names_in_file, entries = {}, {}, []
+    seen_ids, file_keys, entries = {}, {}, []
+    rules = store.check_rules.get(slug)
     for line, cells in rows:
         cell = {k: (cells[i].strip() if i < len(cells) else "") for i, k in enumerate(mapping) if k}
         e = dict(line=line, action=None, rid=None, name="", notes="", fields={}, changes=[], errors={}, warnings=[])
@@ -222,12 +243,6 @@ def plan(store, actor, slug, header, rows, mapping, personal=False):
         if cur is None:
             e["action"] = "create"
             e["changes"] = [(fdefs[k]["label"], "", _show(v)) for k, v in fields.items()]
-            key = name.casefold()
-            if key in names_before:
-                e["warnings"].append(f"same name as {names_before[key]}")
-            elif key in names_in_file:
-                e["warnings"].append(f"same name as line {names_in_file[key]}")
-            names_in_file.setdefault(key, line)
         else:
             e["changes"] = [(fdefs[k]["label"], _show(cur["fields"].get(k)), _show(fields.get(k))) for k in raw if k in fdefs
                             and cur["fields"].get(k) != fields.get(k)]
@@ -238,6 +253,8 @@ def plan(store, actor, slug, header, rows, mapping, personal=False):
             e["action"] = "update" if e["changes"] else "unchanged"
             if cur["archived"]:
                 e["warnings"].append("this record is archived")
+        if e["action"] in ("create", "update"):
+            e["warnings"] += _check_row(store, actor, slug, rules, dict(name=name, fields=fields, notes=e["notes"]), cur, line, file_keys)
     count = Counter(e["action"] for e in entries)
     return dict(entries=entries, created=count["create"], updated=count["update"], unchanged=count["unchanged"], errors=count["error"],
                 warnings=sum(1 for e in entries if e["warnings"]))

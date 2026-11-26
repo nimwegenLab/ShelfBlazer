@@ -6,7 +6,7 @@
 {% elif chosen == 'mine' %}<input type="hidden" name="collection" value="mine"><p class="muted">The records go into <strong>your collection</strong>; they stay yours until you move them to the lab collection.</p>{% endif %}
 <label>File (CSV, TSV or semicolon-separated; the first line holds the column titles)<input type="file" name="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" required></label>
 <div class="actions"><button class="primary">Upload and choose the columns</button> <a class="btn" href="/t/{{ slug }}{{ '?c=mine' if chosen == 'mine' }}">Cancel</a></div></form>
-<h2>How it works</h2>
+<h2>How it works <a class="helplink" href="/help#importing">Help</a></h2>
 <p><a class="btn" href="/t/{{ slug }}/import/template" download>Download an empty template</a> <span class="muted small">(the column titles of {{ schema.name|lower }} records; fill it in a spreadsheet, save as CSV or TSV)</span></p>
 <ul>
 <li>A row with an <strong>ID</strong> updates that record (only one you could edit by hand; in your own collection, only your own records); a row without one creates a new record owned by you. An export file has an ID column, so you can export, edit in a spreadsheet and import again.</li>

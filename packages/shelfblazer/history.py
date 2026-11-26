@@ -6,8 +6,8 @@ from . import fields as fieldrules, ids
 from .errors import NotFound
 from .recordfile import parse_record
 
-_ACTIVITY = re.compile(rf"^({ids.PATTERN}): (create|update|archive|restore|delete) by (\S+)$")
-_BULK = re.compile(r"^bulk: (.+) \((\d+) (\S+) records\)$")
+_ACTIVITY = re.compile(rf"^({ids.PATTERN}): (create|update|archive|restore|delete) by (\S+)(?: \(via \w+\))?$")
+_BULK = re.compile(r"^bulk: (.+) \((\d+) (\S+) records\)(?: \(via \w+\))?$")
 
 
 def recent_activity(store, viewer, limit=8):

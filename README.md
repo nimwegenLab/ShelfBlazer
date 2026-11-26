@@ -98,6 +98,35 @@ Behaviour comes from these settings, never from field names, so a new type works
 A type definition without `color` or `icon` uses the defaults in `builtin.py` for the common lab item types it knows, else a colour derived from its name and a box.
 Unknown values are ignored, with a warning in the server log and on the Types page.
 
+## Checks before saving
+
+When a record is created, edited or imported, the app looks for **possible duplicates** among the records you can see (archived ones included, marked as such) and, where the group has written rules, for **names and values that break its conventions**. Findings appear once, in a *Check before saving* panel on the form (and per row in the import preview): a duplicate links to the existing record, a suggested fix has an *Apply* button, and *Save anyway* saves. Nothing is ever blocked: a repeat can be legitimate.
+
+Without any setup, every type reports records with the same name (compared without case, accents or repeated spaces). A group refines this per type with an optional file `config/checks/<type>.yaml` in the data repository (JSON-compatible, like the type definitions):
+
+```json
+{ "tables": {"spelling": [["(?i)\\bdh5alfa\\b", "DH5alpha"]]},
+  "extract": {"background": {"field": "name", "pattern": "^(?P<value>\\S+)"}},
+  "duplicate_keys": [{"label": "same background and changes", "min_filled": 2,
+                      "parts": [{"extract": "background", "normalise": ["spelling", "casefold"], "required": true},
+                                {"field": "genotype", "set": true}]}],
+  "fields": {"name": {"fix": ["spelling"]}, "genotype": {"max_length": 120}},
+  "guidance": "# Strains\n- Write the background first, then the changes." }
+```
+
+| Setting | Effect |
+|---|---|
+| `tables` | Named lists of `[regular expression, replacement]`, applied in order. Used to compare (`normalise`) and to suggest (`fix`) |
+| `extract` | A named part of a field: the `value` group of a pattern |
+| `duplicate_keys` | Two records are possible duplicates when every part of one key is equal. A part is a `field` or an `extract`, with `normalise` (your tables, or `casefold`, `accents`, `space`, `alnum`, `dna`); `set` compares words in any order; a linked-record field compares the linked IDs; `required` and `min_filled` stop a key from matching on too little |
+| `fields.<key>.fix` | Tables whose result is offered as a suggested value |
+| `fields.<key>.warn`, `max_length` | A warning when a pattern matches, an extract's value or a linked record's name is found in the field, or the value is long |
+| `mentions.<link field>` | Records named in a field (or between square brackets) but not linked; a name spelled differently from the record's |
+| `agree` | Two extracts that are both present must be equal |
+| `guidance` | Markdown with the group's conventions, for people and for [agents](#connecting-an-agent-mcp-off-by-default) |
+
+A file that cannot be read is reported on the Types page and the type falls back to the name check. Format details: `packages/shelfblazer/checks.py` and the [design document](docs/design.md), section 19.
+
 ## Operating it
 
 ### Maintenance commands
@@ -115,6 +144,19 @@ Run them with the `sb` helper from the quick start (or without it when running f
 
 Without `--yes`, `drop-field`, `rename-prefix` and `move-to-personal` only show what they would change.
 A running server picks up commits made by these commands, or by anything else, on its next page and before its next save. There is no need to restart it.
+
+### Help page
+
+*Help* (above the person's name in the sidebar) explains the app to its users: finding, adding, linking, importing and exporting records, who can change what, and, where switched on, personal collections, scanning and the assistant (MCP). Examples are taken from the instance's own types. An instance adds its own section, shown right after the summary under the title of its first heading, by writing `config/help.md` in the data repository, or in the app on *Admin → Help text* (a preview, one commit per save). It is the place for what only the group knows: what each type is for, where samples are kept, who to ask.
+
+### Connecting an agent (MCP, off by default)
+
+With `SHELFBLAZER_MCP=1` in the server's environment, the app also serves the Model Context Protocol at `/mcp`, so your own [Claude Code](https://claude.com/claude-code) (or another MCP client) can search, create, edit and archive records **as you, with your rights**.
+1. Open *AI assistant* (in the menu above Help, or the account page's tab `/me/assistant`) and follow its steps: give the token a name (the computer), confirm with your password, and copy it: it is shown once.
+2. Connect, in two commands (the account page shows them): `read -rs SBT` (paste the token at the hidden prompt), then `claude mcp add --transport http shelfblazer https://<your server>/mcp --header "Authorization: Bearer $SBT"; unset SBT`. The token is never typed into a command line, so it stays out of the shell history. Claude Code keeps it in its own configuration file (`~/.claude.json`): protect that file like an SSH key.
+3. Ask for what you need ("add these three strains", "find the plasmids with Kan resistance"). The agent reads the group's conventions first and checks for duplicates before it saves; changes are committed under your name with "(via MCP)" in the subject, and an import can be undone.
+
+What an agent reads goes to your Claude account: keep nothing confidential in the records. Revoke a token on the same page; administrators' own tokens also have member rights only. Not available to agents: moving a record to the lab collection, bulk edit, files, account settings, scan, export. Details: [design document](docs/design.md), section 18.
 
 ### Deployment and versions
 
@@ -134,6 +176,7 @@ Run one server process only: the file lock protects git, and the search index li
   The look, colour mode and list preferences are separate cookies and stay.
 - **Every check happens before any work:** permissions before a form or an upload is read, request size before the body is read.
   The limit is 4 MB for ordinary forms, and 5 files of 25 MB on record forms and uploads, which must state their size. Put the same limit in the proxy.
+- **Access tokens (MCP, only when enabled):** stored as SHA-256 hashes, shown once, at most 5 per person, 90 days by default (a year at most), created only with the password, revoked with the account and when the password changes; wrong ones are throttled without ever locking a valid token or a sign-in. An agent has its owner's member rights, never more.
 - **Pages:** a strict Content-Security-Policy, CSRF tokens on every form, escaped output, and downloads always sent as attachments.
   Programs, scripts and web pages (`.exe .sh .js .py .html .svg …`) are refused as uploads.
 
@@ -158,7 +201,7 @@ python3 -m venv .venv
 | Path | What it is |
 |---|---|
 | `packages/shelfblazer/` | **Core package** (no web code). `store.py` (records, type definitions, counters, git commits under a file lock), `recordfile.py` (the file format), `fields.py` (what each field setting does, value checks), `perms.py` (permission rules), `schema_edit.py` (editing type definitions), `formula.py` (calculated fields), `auth.py` (accounts), `search.py`, `seqsearch.py`, `export.py`, `uploads.py`, `markdown.py`, `builtin.py` (default icons and colours for common lab item types) |
-| `app/shelfblazer_app/` | **Web app**. `web.py` (builds the app and the helpers every page uses), `lists.py` (home, search, list pages), `records.py` (record pages, forms), `cells.py` (how values show on pages and in forms), `middleware.py` (body limit, security headers, error pages), `views.py` (icons, colours, times), `accounts.py` (sign-in, sign-up, your account), `users_admin.py`, `types_admin.py`, `bulk.py`, `records_import.py`, `export.py`, `files.py`, `cli.py` (the `shelfblazer` command), `templates/`, `static/` |
+| `app/shelfblazer_app/` | **Web app**. `web.py` (builds the app and the helpers every page uses), `lists.py` (home, search, list pages), `records.py` (record pages, forms), `cells.py` (how values show on pages and in forms), `middleware.py` (body limit, security headers, error pages), `views.py` (icons, colours, times), `accounts.py` (sign-in, sign-up, your account), `help.py` (the Help page and its editor), `users_admin.py`, `types_admin.py`, `bulk.py`, `records_import.py`, `export.py`, `files.py`, `cli.py` (the `shelfblazer` command), `templates/`, `static/` |
 | `packages/tests/`, `app/tests/` | Core unit tests; app tests (HTTP and command line) |
 | `deploy/`, `Dockerfile` | Container image and compose files; see [deploy/README.md](deploy/README.md) |
 | `var/` | The runtime home when running from source (git-ignored) |

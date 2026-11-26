@@ -1,6 +1,5 @@
 {% extends "base.html" %}{% from "_display.html" import modes, looks with context %}{% block title %}My account{% endblock %}
-{% block body %}<h1>{{ user.name }}</h1><p class="muted">Username <code>{{ user.username }}</code> · role {{ user.role }}</p>
-{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+{% from "_me_tabs.html" import header with context %}{% block body %}{{ header() }}
 <h2>Display</h2><div class="prefs"><span class="prefl">Colour mode</span>{{ modes() }}<span class="prefl">Look</span>{{ looks() }}</div>
 <p class="muted small">Saved in this browser. Spectrum gives each record type its own colour; Classic uses one accent colour.</p>
 {% if my_nav %}<h2 id="collections">My collection</h2><form method="post" action="/me/collections" class="card-form"><input type="hidden" name="csrf_token" value="{{ csrf }}">
@@ -8,8 +7,4 @@
 {% for s, n in my_nav %}<label class="chk"><input type="checkbox" name="visible_{{ s }}"{% if user.hidden_collections is not defined or s not in user.hidden_collections %} checked{% endif %}> My {{ n|lower }}s: visible to others</label>{% endfor %}
 <p class="muted small">Unchecked, only you and administrators see them in the app. This is not secrecy: the data repository and its backups still hold everything, so keep nothing confidential here.</p>
 <button class="primary">Save</button></form>{% endif %}
-<h2>Change password</h2><form method="post" action="/me/password" class="card-form"><input type="hidden" name="csrf_token" value="{{ csrf }}">
-<label>Current password<input type="password" name="current" autocomplete="current-password" required></label>
-<label>New password (8+ characters)<input type="password" name="password" autocomplete="new-password" required></label>
-<label>Repeat new password<input type="password" name="password2" autocomplete="new-password" required></label>
-<button class="primary">Change password</button></form>{% endblock %}
+{% endblock %}

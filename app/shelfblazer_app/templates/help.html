@@ -1,0 +1,100 @@
+{% extends "base.html" %}{% block title %}Help{% endblock %}
+{% block body %}<div class="help">
+<div class="hero"><h1>Help</h1></div>
+<div class="toc" role="navigation" aria-label="On this page">
+{% if lab_body is not none %}<p><a href="#lab">{{ lab_title }}</a></p>{% endif %}
+<ol>
+<li><a href="#p-find">Find something</a><span class="sub">Home and lists</span></li>
+<li><a href="#p-add">Add something</a><span class="sub"><a href="#duplicates">Search first</a>{% if mcp_enabled %} · <a href="#assistant">AI assistant</a>{% endif %} · <a href="#adding">The form</a> · <a href="#importing">Spreadsheet</a> · <a href="#ids">IDs</a> · <a href="#links">Links</a></span></li>
+<li><a href="#p-change">Change or retire something</a><span class="sub"><a href="#editing">Who can change what</a> · <a href="#history">History and undo</a></span></li>
+<li><a href="#p-many">Many at once</a><span class="sub"><a href="#bulk">Change several at once</a>{% if can_scan %} · <a href="#scan">Scanning</a>{% endif %}</span></li>
+{% if personal %}<li><a href="#personal">Your own collection</a></li>{% endif %}
+<li><a href="#account">Your account</a></li>
+</ol></div>
+
+<h2 id="summary">{{ 'Six' if mcp_enabled and personal else 'Five' if mcp_enabled or personal else 'Four' }} things to know</h2>
+<ol class="five">
+{% if mcp_enabled %}<li><strong>Search in the app, add with your AI assistant.</strong> Say what you have; the assistant fills the fields, checks for duplicates and asks when unsure. <a href="#assistant">More</a></li>{% endif %}
+<li><strong>Search before you add.</strong> Whichever way you add, look first: most duplicates come from not finding what was already there. <a href="#duplicates">More</a></li>
+<li><strong>Nothing is deleted.</strong> Unneeded entries are <em>archived</em>; every change is in the History. <a href="#history">More</a></li>
+<li><strong>Only the creator of an entry, or an administrator, can edit it.</strong> Ask them for a change. <a href="#editing">More</a></li>
+<li><strong>The ID names the sample.</strong> Write it on the label and use it in notes. <a href="#ids">More</a></li>
+{% if personal %}<li><strong>Your own collection is separate from the lab’s.</strong> Its items stay out of the lab’s lists until you move them. <a href="#personal">More</a></li>{% endif %}
+</ol>
+{% if lab_body is not none %}<h2 id="lab">{{ lab_title }}</h2><div class="notes labtext">{{ md(lab_body)|safe }}</div>{% endif %}
+
+<h2 class="part" id="p-find">Find something</h2>
+<h3 id="finding">Home and lists</h3>
+<ul>
+<li><strong>Home:</strong> one search over every type: type words, part of a name, or an ID. Results are grouped by type; the tiles show each type’s size and a <strong>+</strong> to add.</li>
+<li><strong>Lists:</strong> search, sort by column title, filter by <em>owner</em> or <em>archived</em>, <strong>Table</strong> or <strong>Cards</strong>. The address holds your search and sort: bookmark or share it.</li>
+<li>All words must match. Tick <strong>fuzzy</strong> for near spellings (only when there are few results, never for IDs). Archived entries are left out unless you tick <em>archived</em>.</li>
+<li><strong>Notes:</strong> only their beginning is searched; put searchable words in the name and fields.</li>
+{% if mcp_enabled %}<li><strong>Your AI assistant</strong> can search too, in plain words: <a href="#assistant">see below</a>.</li>{% endif %}
+{% if sequences %}<li><strong>Sequences:</strong> where a type has one, tick <em>sequence</em> and paste at least 6 bases: both strands are searched, <em>Mismatches</em> allows a few differences.</li>{% endif %}
+</ul>
+
+<h2 class="part" id="p-add">Add something</h2>
+<h3 id="duplicates">Search first</h3>
+<p>Search the usual name <em>and</em> the name on the label or the paper: one thing is often written two ways. If the entry exists, use it; for a new stock of the same thing, add a note to it, or create an entry that links to it.</p>
+<p>When you save, the app shows likely duplicates first. It only warns; you can save anyway. An archived duplicate is marked: that sample was most likely thrown away.</p>
+
+{% if mcp_enabled %}<h3 id="assistant">With your AI assistant</h3>
+<p>Describe what you have, in plain words: <em>“Add these twenty {{ ex.type }}s from my table”</em>. An AI assistant (Claude Code, for example) fills in the fields, checks for duplicates and follows the lab’s conventions; it can search too: <em>“Which {{ ex.type }}s did I add this month?”</em> It works as you, and its changes are marked “via MCP” in the History. Moving items to the lab collection, editing many records at once and files stay in the app.</p>
+<p><a class="btn" href="/me/assistant">{{ svg('wand-magic-sparkles') }}Set up your AI assistant</a></p>{% endif %}
+
+<h3 id="adding">With the form</h3>
+<ul>
+<li><strong>+ New</strong> opens a form made for the type; * marks required fields. <strong>Save and add another</strong> keeps you in the form.</li>
+<li><strong>Choice fields:</strong> use an existing option; add a new one (where offered) only if none fits.</li>
+<li><strong>Notes:</strong> simple Markdown: blank line for a paragraph, <code>-</code> lists, <code>**bold**</code>, <code>*italic*</code>, <code>[text](https://…)</code>, IDs that link.</li>
+<li><strong>Files:</strong> 25 MB each, 5 at a time; programs and scripts are refused. A photo is shrunk in your browser; where the type shows a picture, it is the first image attached.</li>
+<li>If someone saved the entry meanwhile, you are told and nothing is overwritten.</li>
+</ul>
+
+<h3 id="importing">From a spreadsheet</h3>
+<p>For many entries at once, use <strong>Import…</strong> beside <em>+ New</em> on a list. Download the empty template (the type’s column titles), fill it in, save it as CSV or TSV, upload it, match the columns and read the preview: every row is checked, and one bad row stops everything. Rows without an ID create new entries. Everything goes in as one commit that you can undo. To correct entries that already exist, see <a href="#bulk">Change several at once</a>.</p>
+
+<h3 id="ids">IDs and labels</h3>
+<p>An ID is a two-letter type code, a hyphen and a number: <code>{{ ex.prefix }}-12</code>. It is given on saving and is never reused; write it on the label. Where a type is stored in ID order, the ID is the sample’s location. In notes, an ID written in full becomes a link; typed in a search box it opens the entry.</p>
+
+<h3 id="links">Links between records</h3>
+<p>A field that points to another record{% if ex.link %} (<em>{{ ex.link.field }}</em> in a {{ ex.link.type }}, pointing to a {{ ex.link.to }}){% endif %} takes IDs separated by commas; start typing to pick. The other record lists the link under <strong>Referenced by</strong>. Link rather than retype a name: a later correction then shows everywhere.</p>
+
+<h2 class="part" id="p-change">Change or retire something</h2>
+<h3 id="editing">Who can change what</h3>
+<ul>
+<li>Everybody with an account reads and adds records (an administrator can restrict this per type).</li>
+<li>You edit, archive and restore <strong>your own</strong> entries; administrators edit all. Some types are open to everyone, or to administrators only; the entry says so when you cannot edit it.</li>
+<li><strong>Archiving</strong> hides an entry from everybody but its owner and the administrators; <strong>Restore</strong> brings it back. Links to it keep working. Nothing is ever deleted.</li>
+<li>An administrator can change an entry’s <em>Owner</em>, for example when somebody leaves.</li>
+</ul>
+<h3 id="history">History and undo</h3>
+<p>Each change is saved with who and when, and listed under <strong>History</strong> on the entry. Open an earlier line to see the entry then, and copy values back through <strong>Edit</strong>. A bulk edit or an import is undone with the button shown right after it.</p>
+
+<h2 class="part" id="p-many">Many at once</h2>
+<h3 id="bulk">Change several at once</h3>
+<p><strong>In the app:</strong> press <em>Select</em> in a list, tick rows, <em>Edit selected…</em>, and set one field for all of them. You see what changes, and what is skipped because you may not edit it, before saving. One commit, with <strong>Undo</strong> right after.</p>
+<p><strong>In a spreadsheet,</strong> for anything more varied:</p>
+<ol>
+<li><strong>Export.</strong> Select the rows, <em>Export…</em>, pick the columns (keep <em>ID</em>) and download a tab-separated file.</li>
+<li><strong>Review and edit</strong> it in your spreadsheet program: correct values, fill gaps, add rows at the bottom. Leave the ID column as it is.</li>
+<li><strong>Import it back</strong> with <em>Import…</em>: match the columns and read the preview. A row with an ID updates that entry (only if you may edit it); a row without one creates a new entry; an empty cell leaves the field alone. One bad row stops everything; the import is one commit, with Undo.</li>
+</ol>
+{% if can_scan %}<h3 id="scan">Scanning barcodes</h3>
+<p><strong>Scan</strong> (sidebar; on phones, beside the menu) reads a code with the camera or a USB reader and opens the entry that carries it. For an unknown code you can add a new product with the code filled in, or add the code to an existing entry (same product, new package). Lot numbers start unticked. In a form, <strong>Scan</strong> beside a code field adds a code.</p>{% endif %}
+
+{% if personal %}<h2 class="part" id="personal">Your own collection</h2>
+<p>Where the lab allows it, you can keep <strong>your own</strong> items of a type, apart from the shared <strong>lab collection</strong> (<em>My collection</em> in the sidebar): work in progress, something you may not keep.</p>
+<ul>
+<li><strong>Choose where</strong> when you add: <em>Add to</em> lab collection or my collection (the lab by default).</li>
+<li><strong>They are not in the lab’s lists or counts.</strong> <em>Also in collections</em>, below a list, shows matches in your collection and others’; the Home search shows them in tables of their own.</li>
+<li><strong>IDs:</strong> you number yours from 1 with a <em>P</em>: <code>{{ ex.prefix }}-P3</code> is <em>your</em> third. Someone else’s reads <code>{{ ex.prefix }}-P3[Alice]</code>.</li>
+<li><strong>Who sees them:</strong> other people can read them by default. <a href="/me#collections">My account</a> lets you hide each type; then only you and administrators see it. This is not secrecy (backups hold everything): keep nothing confidential here.</li>
+<li><strong>Links:</strong> lab records cannot link to a personal item; a personal item can link to lab records and to your own.</li>
+<li id="moving"><strong>Move to the lab collection</strong> (on the item, or select several in a list): the page shows the new lab IDs first. Personal items it links to come along, or you link to a matching lab item instead. The old ID keeps working. <strong>You cannot undo a move;</strong> only an administrator can.</li>
+</ul>{% endif %}
+
+<h2 class="part" id="account">Your account</h2>
+<p><a href="/me">My account</a> (your name, bottom of the sidebar): colour mode and look, {% if personal %}who sees your collection, {% endif %}your password (8 characters or more){% if mcp_enabled %}, and the setup of your AI assistant{% endif %}. A forgotten password: an administrator sends you a link. Administrators also have <strong>Admin</strong>: users, types and fields, permissions, and the lab’s help text.</p>
+</div>{% endblock %}

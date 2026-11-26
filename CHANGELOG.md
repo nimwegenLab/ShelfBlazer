@@ -7,6 +7,26 @@ A change to the record or type-definition format in `data/` always gets an **Upg
 To release: set the same version in `app/pyproject.toml` and `packages/pyproject.toml`, add a section below, commit, then tag `vMAJOR.MINOR.PATCH`.
 (Reinstall with `pip install -e packages -e app` afterwards so the version shown in the app follows.)
 
+## [0.4.0] - 2026-11-26
+
+### Added
+- **The AI assistant is easy to find and to set up** (when the MCP endpoint is on): *Connect AI assistant* in the menu, next to Help (*AI assistant* once the person has a token), and a line on the new-record form open the account page's *AI assistant* tab. It says in plain words what the assistant does and walks through the setup in four numbered steps (install Claude Code, create a token, connect with two copyable commands, try it), lists the person's tokens, and opens on the connect step right after a token is made. The connect command uses `--scope user`, so the assistant works in every folder. The Help page keeps a short section with a button to that tab.
+- **The account page has tabs**: General (display, own collection), AI assistant and Password.
+- **MCP `search_records` answers questions about field values**: conditions on fields (`where`: empty, not empty, contains, equal, before/after for numbers and dates, including when a record was created or changed), chosen field values with each result (`fields`), sequence search with mismatches, sorting (`sort`), and counts per value (`group_by`), so an agent can answer "how many strains have no plasmid" in one call. Hidden fields and records stay out of conditions, values and counts.
+- Account page: *Copy* buttons for a new access token and the two connect commands, and a clearly visible text selection.
+- **Help page** (*Help*, above your name in the sidebar): what to know first (search before you add, who can change what, IDs, archiving), then how to find, add, link, import and export records, with its own section for personal collections, scanning and the MCP endpoint where those are switched on. Examples come from the instance's own types. The lab's own section, shown right after the summary under the title of its first heading, is `config/help.md` in the data repository; administrators edit it on *Admin → Help text* (one commit per save, with a preview). Small *Help* links on the new-record form, the *only the creator can edit* note, *My collection* lists, the move, import and scan pages jump to the matching section.
+- **MCP endpoint (off unless `SHELFBLAZER_MCP=1`)**: `/mcp` lets a person's own Claude Code search, create, update, archive and import records as that person, with member rights even for administrators. Personal access tokens on the account page (name, expiry, created with the password, shown once and pasted at a hidden prompt so it never enters the shell history, stored hashed, revoked with the account and on any password change; wrong tokens throttled on their own budget, never locking a valid token or a sign-in). Tools: `list_types`, `search_records`, `get_record`, `check_record`, `create_record`, `update_record`, `archive_record`, `restore_record`, `import_table`, `undo_import`; resources `conventions://<type>` and `schema://<type>`. Commits made this way say "(via MCP)". Needs the `mcp` Python package. Not meant to be switched on for a group before the authentication review.
+- Check before saving: when a new or edited record looks like a duplicate of one you can see (same name by default; what counts as "the same" can be set per type in `config/checks/<type>.yaml` in the data repository), the form shows the records and lets you save anyway. The same file can give suggested fixes (a button fills the field) and warnings about conventions, such as a linked record named in a name but not linked.
+
+### Upgrading
+- **No change to existing records or type definitions.**
+- Every type now gets the same-name check, so a form can show the *Check before saving* panel for names that already exist (archived records included). It only asks once; nothing is blocked. To refine or silence it, add `config/checks/<type>.yaml` to the data repository (README, "Checks before saving"); a file with a mistake is reported on the Types page and ignored.
+- The import preview also shows these findings per row (it did only exact-name warnings before).
+- Nothing to do for the Help page. To give it a lab section, write `config/help.md` (or use *Admin → Help text*); the record "how to use" document it replaces can be archived.
+- The MCP endpoint is off unless `SHELFBLAZER_MCP=1`, and needs the `mcp` Python package: run `pip install -e packages -e app` again (or rebuild the image).
+- Access tokens are kept with the accounts in `users.json` (a `tokens` list per person, hashes only). Going back to 0.3 is safe: 0.3 ignores the list and keeps it when it saves the file.
+- No data-repository tag or backup is needed beyond the usual ones: records and type definitions do not change.
+
 ## [0.3.0] - 2026-11-25
 
 ### Added

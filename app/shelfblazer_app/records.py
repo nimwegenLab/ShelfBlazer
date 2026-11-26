@@ -1,18 +1,17 @@
 """Record pages: view, an earlier version, new, edit, archive, and downloading attached files."""
-import os, re
+import os
 
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from starlette.datastructures import UploadFile
 
-from shelfblazer import fields as fieldrules, ids, perms, uploads
-from shelfblazer.auth import UID_RE
+from shelfblazer import checks, fields as fieldrules, ids, perms, uploads
+from shelfblazer.auth import UID_IN_TEXT
 from shelfblazer.store import Forbidden, NotFound, ValidationError
 from . import scan
 from .files import FILES_PER_REQUEST
 
-UID_IN_TEXT = re.compile(r"(?<!~)\b" + UID_RE.pattern.strip("^$") + r"\b")   # user IDs in commit messages ("ST-12: update by U7F3K2QA"), shown as names
 
 
 def register(app, c):
@@ -171,6 +170,11 @@ def register(app, c):
         chosen = "mine" if form.get("collection") == "mine" else "lab"
         if chosen not in [v for v, _ in choices]:
             raise Forbidden(f"You cannot add {store.schemas[slug]['name'].lower()} records to that collection.")
+        findings = store.review(u, slug, form.get("name", ""), raw, form.get("notes", ""), personal=chosen == "mine")
+        if findings and form.get("confirm") != checks.signature(findings):      # not yet seen: show them, the person decides
+            return render(request, "form.html", slug=slug, schema=store.schemas[slug], mode="new", name=form.get("name", ""), notes=form.get("notes", ""),
+                          fields=form_descriptors(slug, raw, creating=True, place_new=True, typed=additions), version="", collections=choices,
+                          chosen=chosen, findings=findings, confirm=checks.signature(findings), action=form.get("action", "save"))
         try:
             rid = store.create(slug, u, form.get("name", ""), raw, form.get("notes", ""), additions=additions, personal=chosen == "mine")
         except ValidationError as e:
@@ -206,6 +210,13 @@ def register(app, c):
         if not store.can_edit(u, rec):                                       # before reading the form: it may add options and places
             raise Forbidden(edit_refusal(rec))
         form, raw, files, additions = await read_form(request, rec["type"])
+        findings = store.review(u, rec["type"], form.get("name", ""), raw, form.get("notes", ""), rid=rid)
+        if findings and form.get("confirm") != checks.signature(findings):
+            return render(request, "form.html", slug=rec["type"], schema=store.schemas[rec["type"]], mode="edit", rec=rec, name=form.get("name", ""),
+                          notes=form.get("notes", ""), fields=form_descriptors(rec["type"], {**rec["fields"], **raw}, place_new=True, typed=additions,
+                                                                              keep_legacy={k for k, v in rec["fields"].items() if v}),
+                          version=form.get("version", ""), people=owner_choices(u), owner=form.get("owner", rec["created_by"]),
+                          findings=findings, confirm=checks.signature(findings), action=form.get("action", "save"))
         try:
             store.update(rid, u, form.get("name", ""), raw, form.get("notes", ""), form.get("version", ""),
                          owner=form.get("owner", "") if perms.is_admin(u) else None, additions=additions)

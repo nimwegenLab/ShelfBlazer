@@ -10,14 +10,21 @@ SCRYPT = dict(n=2**15, r=8, p=1, maxmem=96 * 1024 * 1024, dklen=32)
 USERNAME_RE = re.compile(r"^[a-z][a-z0-9_.-]{1,31}$")
 UID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"     # upper case: a user ID can never be mistaken for a username (always lower case)
 UID_RE = re.compile(r"^U[A-Z2-7]{7}$")
+UID_IN_TEXT = re.compile(r"(?<!~)\b" + UID_RE.pattern.strip("^$") + r"\b")   # user IDs in commit messages ("ST-12: update by U7F3K2QA"), shown as names
 MIN_PASSWORD_LENGTH = 8
 RESET_TTL = 24 * 3600
 MAX_FAILS, FAIL_WINDOW = 5, 300   # wrong passwords for one username from one address, within the window
 MAX_IP_FAILS = 30                 # wrong passwords from one address, all usernames together (stops spraying)
 MAX_SIGNUP_FAILS = 5              # wrong sign-up passphrases from one address
+MAX_TOKEN_FAILS = 20              # wrong access tokens from one address (their own budget: never locks a valid token or a login)
 MAX_NAME_LENGTH = 80
 SESSION_TTL = 14 * 24 * 3600      # same as the session cookie
 MAX_SESSIONS = 20                 # signed-in browsers per person; the oldest is signed out beyond that
+MAX_TOKENS = 5                    # personal access tokens per person (docs/design.md, section 18)
+TOKEN_PREFIX = "sbt_"
+TOKEN_SCOPES = ("member", "admin")
+TOKEN_DEFAULT_DAYS, TOKEN_MAX_DAYS, ADMIN_TOKEN_MAX_DAYS = 90, 365, 30
+TOKEN_TOUCH = 600                 # "last used" is written at most this often (seconds)
 
 
 def hash_password(password: str) -> str:
@@ -55,6 +62,10 @@ def clean_name(name):
     if len(name) > MAX_NAME_LENGTH:
         raise ValueError(f"name: at most {MAX_NAME_LENGTH} characters")
     return name
+
+
+def _token_key(token):
+    return hashlib.sha256((token or "").encode()).hexdigest()
 
 
 def _sid_key(sid):
@@ -148,7 +159,7 @@ class Users:
                 return uid
 
     def public(self, u):
-        return {k: v for k, v in u.items() if k not in ("pw", "sessions")}
+        return {k: v for k, v in u.items() if k not in ("pw", "sessions", "tokens")}
 
     def erase(self, username):
         """Remove a person for good (right to erasure): their entry goes, their user ID stays as a tombstone so it is never reissued.
@@ -208,6 +219,9 @@ class Users:
                 if k == "name":
                     v = clean_name(v) or username.lower()
                 u[k] = v
+            if kw.get("active") is False:
+                u.pop("tokens", None)                 # a deactivated account keeps no access tokens (an administrator token also stops working
+                                                      # when its owner is no longer an administrator: authenticate_token checks)
             # never leave the system without an active admin
             if not any(x["role"] == "admin" and x["active"] and x["pw"] for x in d["users"].values()):
                 raise ValueError("at least one active admin with a password must remain")
@@ -233,6 +247,8 @@ class Users:
         return type_slug not in (u or {}).get("hidden_collections", [])
 
     def set_password(self, username, password):
+        """Set a password. Personal access tokens are revoked with it, also when people change their own password: that is what
+        they do when they think someone got in, and a token made from a stolen session must not outlive it."""
         err = check_password_strength(password)
         if err:
             raise ValueError(err)
@@ -241,6 +257,7 @@ class Users:
             if not u:
                 raise KeyError(username)
             u["pw"] = hash_password(password)
+            u.pop("tokens", None)
             d["reset"] = {k: v for k, v in d["reset"].items() if v["user"] != username.lower()}
 
     def password_version(self, u):
@@ -252,6 +269,7 @@ class Users:
         with self._txn() as d:
             if username.lower() not in d["users"]:
                 raise KeyError(username)
+            d["users"][username.lower()].pop("tokens", None)       # a reset link means the account may be compromised: access tokens go too
             now = time.time()
             d["reset"] = {k: v for k, v in d["reset"].items() if v["exp"] > now and v["user"] != username.lower()}
             d["reset"][hashlib.sha256(token.encode()).hexdigest()] = {"user": username.lower(), "exp": now + RESET_TTL}
@@ -297,6 +315,80 @@ class Users:
             if u and u.get("sessions"):
                 u["sessions"].pop(_sid_key(sid), None)
 
+    # ---- personal access tokens (for the MCP endpoint; stored as SHA-256 hashes, shown once; docs/design.md, section 18)
+    def create_token(self, username, name, days=TOKEN_DEFAULT_DAYS, scope="member"):
+        """A new token for this person: returns (token text, its record). The text is not stored anywhere, only its hash."""
+        name = clean_name(name)
+        if not name:
+            raise ValueError("give the token a name, for example the computer it is for")
+        if scope not in TOKEN_SCOPES:
+            raise ValueError("bad scope")
+        limit = ADMIN_TOKEN_MAX_DAYS if scope == "admin" else TOKEN_MAX_DAYS
+        if not isinstance(days, int) or not 1 <= days <= limit:
+            raise ValueError(f"the expiry must be between 1 and {limit} days")
+        token = TOKEN_PREFIX + secrets.token_urlsafe(32)
+        now = time.time()
+        with self._txn() as d:
+            u = d["users"].get((username or "").lower())
+            if not u or not u["active"]:
+                raise KeyError(username)
+            if scope == "admin" and u["role"] != "admin":
+                raise ValueError("only administrators can create an administrator token")
+            live = {k: v for k, v in (u.get("tokens") or {}).items() if v["expires"] > now}
+            if len(live) >= MAX_TOKENS:
+                raise ValueError(f"at most {MAX_TOKENS} tokens: revoke one first")
+            tid = secrets.token_hex(4)
+            live[_token_key(token)] = rec = {"id": tid, "name": name, "created": now, "expires": now + days * 86400, "last_used": None, "scope": scope}
+            u["tokens"] = live
+        return token, dict(rec)
+
+    def tokens_of(self, username):
+        """The person's live tokens (no secrets: not even the hash), newest first."""
+        u = self.get(username)
+        now = time.time()
+        return sorted((dict(t) for t in (u.get("tokens") or {}).values() if t["expires"] > now), key=lambda t: -t["created"]) if u else []
+
+    def revoke_token(self, username, tid):
+        with self._txn() as d:
+            u = d["users"].get((username or "").lower())
+            if not u:
+                raise KeyError(username)
+            left = {k: v for k, v in (u.get("tokens") or {}).items() if v["id"] != tid}
+            found = len(left) != len(u.get("tokens") or {})
+            if left:
+                u["tokens"] = left
+            else:
+                u.pop("tokens", None)
+            return found
+
+    def revoke_all_tokens(self, username):
+        with self._txn() as d:
+            u = d["users"].get((username or "").lower())
+            if u:
+                u.pop("tokens", None)
+
+    def authenticate_token(self, token, ip):
+        """(account, token record) for a valid, unexpired token of an active account, else (None, None). A valid token always
+        works: a token cannot be guessed (256 random bits), so the throttle only stops a sender that keeps trying wrong ones
+        (``token_locked``), and those failures have their own budget, so they never lock anybody's sign-in either."""
+        data = self._read()
+        index = data.get("_by_token")
+        if index is None:                         # built once per version of the file (held in the cache only, never written)
+            index = data["_by_token"] = {k: (name, t["id"]) for name, u in data["users"].items() for k, t in (u.get("tokens") or {}).items()}
+        hit = index.get(_token_key(token)) if isinstance(token, str) and token.startswith(TOKEN_PREFIX) else None
+        u = data["users"].get(hit[0]) if hit else None
+        t = next((t for t in (u.get("tokens") or {}).values() if t["id"] == hit[1]), None) if u else None
+        if not (u and t and u["active"] and t["expires"] > time.time() and (t["scope"] != "admin" or u["role"] == "admin")):
+            with self._fails_lock:
+                self._fails.setdefault(f"token|{ip}", []).append(time.time())
+            return None, None
+        if not t["last_used"] or time.time() - t["last_used"] > TOKEN_TOUCH:
+            with self._txn() as d:
+                live = (d["users"].get(hit[0]) or {}).get("tokens", {}).get(_token_key(token))
+                if live:
+                    live["last_used"] = time.time()
+        return dict(u, username=hit[0]), dict(t)
+
     # ---- throttling (in memory): login per username and address, login per address, sign-up passphrase per address
     def _recent(self, key, now):
         fails = [t for t in self._fails.get(key, []) if now - t < FAIL_WINDOW]
@@ -325,6 +417,11 @@ class Users:
     def clear_failures(self, username, ip):
         with self._fails_lock:
             self._fails.pop(self._key(username, ip), None)
+
+    def token_locked(self, ip):
+        """Wrong access tokens from this address too often: refuse its next wrong ones with "too many attempts"."""
+        with self._fails_lock:
+            return self._recent(f"token|{ip}", time.time()) >= MAX_TOKEN_FAILS
 
     def signup_locked(self, ip):
         with self._fails_lock:

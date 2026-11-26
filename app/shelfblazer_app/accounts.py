@@ -1,10 +1,11 @@
 """Signing in and out, sign-up with the passphrase, set-password links, your own page and password, and the look and colour mode."""
-import secrets
+import secrets, time
 
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from shelfblazer.auth import check_password_strength
+from shelfblazer import perms
+from shelfblazer.auth import (ADMIN_TOKEN_MAX_DAYS, TOKEN_DEFAULT_DAYS, TOKEN_MAX_DAYS, check_password_strength)
 
 APPEARANCES = ("auto", "day", "night")   # colour mode; auto follows the system setting
 LOOKS = ("spectrum", "classic")           # spectrum: a colour per record type (default); classic: one accent colour
@@ -100,10 +101,65 @@ def register(app, c):
         flash(request, "Password set. You can sign in now.")
         return RedirectResponse("/login", 303)
 
+    TABS = {"general": "me.html", "assistant": "me_assistant.html", "password": "me_password.html"}
+
+    def example_type(u):
+        """A type the person adds records to, for the examples on the assistant tab ("Add a strain called ...")."""
+        slug = next((s for s in c.ordered_types() if c.store.can_create(u, s)), None)
+        return c.store.schemas[slug]["name"].lower() if slug else "record"
+
+    def me_page(request, u, tab="general", status=200, **ctx):
+        """One tab of the account page: general (display, own collection), AI assistant (tokens; only with the MCP endpoint), password."""
+        if tab == "assistant" and not c.mcp:
+            raise HTTPException(404, "the AI assistant is not enabled")
+        extra = {}
+        if tab == "assistant":
+            when = lambda ts: time.strftime("%d %b %Y", time.localtime(ts)) if ts else "never"
+            extra = dict(tokens=[dict(t, expires_text=when(t["expires"]), used_text=when(t["last_used"])) for t in users.tokens_of(u["username"])],
+                         token_default=TOKEN_DEFAULT_DAYS, token_max=TOKEN_MAX_DAYS, admin_token_max=ADMIN_TOKEN_MAX_DAYS, ex=example_type(u))
+            extra["ex_a"] = ("an " if extra["ex"][:1] in "aeiou" else "a ") + extra["ex"]         # "an item", "a strain"
+        return render(request, TABS[tab], status=status, tab=tab, **extra, **ctx)
+
     @app.get("/me", response_class=HTMLResponse)
     async def me(request: Request):
-        need_user(request)
-        return render(request, "me.html")
+        return me_page(request, need_user(request))
+
+    @app.get("/me/assistant", response_class=HTMLResponse)
+    async def me_assistant(request: Request):
+        """How to connect an AI assistant, step by step, and the person's tokens (only with the MCP endpoint)."""
+        return me_page(request, need_user(request), "assistant")
+
+    @app.get("/me/password", response_class=HTMLResponse)
+    async def me_password_form(request: Request):
+        return me_page(request, need_user(request), "password")
+
+    @app.post("/me/tokens", response_class=HTMLResponse)
+    async def me_token_create(request: Request):
+        """A new access token for the MCP endpoint, shown once on the page that answers (never in a redirect, a URL or a flash). Asks for
+        the password: a token lasts longer than a session and survives signing out, so a stolen session cookie alone must not make one."""
+        u = need_user(request)
+        form = await request.form()
+        check_csrf(request, form)
+        if not c.mcp:
+            raise HTTPException(404, "access tokens are not enabled")
+        ip = request.client.host if request.client else "?"
+        if not (await off_loop(users.authenticate, u["username"], str(form.get("current", "")), ip))[0]:
+            return me_page(request, u, "assistant", status=400, error="Your ShelfBlazer password is wrong.")
+        scope = "admin" if form.get("admin") and perms.is_admin(u) else "member"
+        try:
+            days = int(form.get("days") or TOKEN_DEFAULT_DAYS)
+            text, rec = users.create_token(u["username"], form.get("name", ""), days, scope)
+        except ValueError as e:
+            return me_page(request, u, "assistant", status=400, error=str(e))
+        return me_page(request, u, "assistant", new_token=dict(text=text, name=rec["name"]))
+
+    @app.post("/me/tokens/{tid}/revoke")
+    async def me_token_revoke(request: Request, tid: str):
+        u = need_user(request)
+        form = await request.form()
+        check_csrf(request, form)
+        flash(request, "Token revoked." if users.revoke_token(u["username"], tid) else "No such token.")
+        return RedirectResponse("/me/assistant#tokens", 303)
 
     @app.post("/me/collections")
     async def me_collections(request: Request):
@@ -130,11 +186,12 @@ def register(app, c):
         else:
             err = check_password_strength(pw)
         if err:
-            return render(request, "me.html", status=400, error=err)
-        await off_loop(users.set_password, u["username"], pw)
+            return me_page(request, u, "password", status=400, error=err)
+        had_tokens = bool(users.tokens_of(u["username"]))
+        await off_loop(users.set_password, u["username"], pw)             # revokes the access tokens too
         request.session["pwv"] = users.password_version(users.get(u["username"]))
-        flash(request, "Password changed.")
-        return RedirectResponse("/me", 303)
+        flash(request, "Password changed. Your access tokens were revoked: make new ones if you still need them." if had_tokens else "Password changed.")
+        return RedirectResponse("/me/password", 303)
 
     @app.get("/look")
     async def choose_look(request: Request, name: str = "spectrum", next: str = "/"):

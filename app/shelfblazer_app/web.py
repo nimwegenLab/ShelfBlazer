@@ -1,5 +1,5 @@
 """FastAPI application: builds the app (sessions, templates, the shared helpers every page uses) and registers the route modules:
-lists (home, search, lists), records, accounts, users_admin, bulk, export, records_import, files, types_admin."""
+lists (home, search, lists), records, accounts, users_admin, bulk, export, records_import, files, types_admin, help."""
 import json, os, re, secrets
 from types import SimpleNamespace
 from urllib.parse import urlparse
@@ -25,7 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 HASHING_THREADS = 4          # scrypt uses 32 MB per call: at most this many at once, off the event loop
 
 
-def create_app(data_dir, instance_dir, https_only=False):
+def create_app(data_dir, instance_dir, https_only=False, mcp=None):
     os.makedirs(instance_dir, exist_ok=True)
     users = Users(os.path.join(instance_dir, "users.json"))
     store = Store(data_dir, users_lookup=users.resolve)
@@ -39,7 +39,13 @@ def create_app(data_dir, instance_dir, https_only=False):
     with open(key_path) as fh:
         secret = fh.read().strip()
 
-    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    if mcp is None:
+        mcp = os.environ.get("SHELFBLAZER_MCP") == "1"      # off unless asked for: see docs/design.md, section 18
+    endpoint = None
+    if mcp:
+        from .mcp_server import Mcp
+        endpoint = Mcp(store, index, users)
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=endpoint.lifespan if endpoint else None)
     app.add_middleware(SessionMiddleware, secret_key=secret, session_cookie="shelfblazer", same_site="lax",
                        https_only=https_only, max_age=14 * 24 * 3600)
     app.add_middleware(BodyLimit)                          # outermost: runs before anything reads the body
@@ -114,7 +120,8 @@ def create_app(data_dir, instance_dir, https_only=False):
                     md=lambda text, owner=None: md.render(text, store.visible_records(u), owner, lambda rid: ids.label(rid, u["uid"] if u else None, display)),
                     appearance=appearance_of(request), look=look_of(request), hue=hue_of, type_hue=type_hue, icon=icon_of, svg=svg_icon, initials=initials, active=active_nav(request),
                     here=request.url.path + (("?" + request.url.query) if request.url.query else ""),
-                    can_scan=bool(u) and bool(scanning.types(store, u)), my_nav=my_types(u))
+                    can_scan=bool(u) and bool(scanning.types(store, u)), my_nav=my_types(u),
+                    mcp_enabled=bool(endpoint), ai_set_up=bool(endpoint) and bool(u) and bool(users.tokens_of(u["username"])))
         response = templates.TemplateResponse(request, template, {**base, **ctx}, status_code=status)
         shown = idlabels.labels(response.body.decode("utf-8"), u["uid"] if u else None, display)     # keys of personal records -> ST-P3[Alice]
         if shown.encode("utf-8") != response.body:
@@ -153,7 +160,8 @@ def create_app(data_dir, instance_dir, https_only=False):
                 u = user_of(request)
                 return f"my:{slug}" if u and p.owner == u["uid"] else None
             return slug
-        return ("admin" if path.startswith("/admin") else "me" if path.startswith("/me")
+        return ("admin" if path.startswith("/admin") else "help" if path.startswith("/help")
+                else "assistant" if path.startswith(("/me/assistant", "/me/tokens")) else "me" if path.startswith("/me")
                 else "home" if path == "/" else None)
 
     def ordered_types():
@@ -191,11 +199,11 @@ def create_app(data_dir, instance_dir, https_only=False):
 
     app.state.time_ago = time_ago
 
-    from . import accounts, bulk, export, files as files_routes, lists, move, records, records_import, scan, types_admin, users_admin
+    from . import accounts, bulk, export, files as files_routes, help as help_page, lists, move, records, records_import, scan, types_admin, users_admin
     ctx = SimpleNamespace(store=store, users=users, index=index, render=render, need_user=need_user, need_admin=need_admin, user_of=user_of,
                           check_csrf=check_csrf, flash=flash, display=display, off_loop=off_loop,
                           form_descriptors=form_descriptors, type_hue=type_hue, computed_cell=computed_cell, present=present, cell=cell, label_of=label_of, picture=picture, ordered_types=ordered_types,
-                          edit_refusal=edit_refusal, collections_for=collections_for, safe_next=safe_next, https_only=https_only, my_types=my_types)
+                          edit_refusal=edit_refusal, mcp=bool(endpoint), collections_for=collections_for, safe_next=safe_next, https_only=https_only, my_types=my_types)
     lists.register(app, ctx)
     records.register(app, ctx)
     accounts.register(app, ctx)
@@ -207,4 +215,7 @@ def create_app(data_dir, instance_dir, https_only=False):
     types_admin.register(app, ctx)
     scan.register(app, ctx)
     move.register(app, ctx)
+    help_page.register(app, ctx)
+    if endpoint:
+        endpoint.mount(app)
     return app

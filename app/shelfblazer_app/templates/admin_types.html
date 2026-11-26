@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}Types{% endblock %}
-{% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <strong>Types</strong></p><h1>Types</h1>
+{% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <strong>Types</strong> · <a href="/admin/help">Help text</a></p><h1>Types</h1>
 <p class="lead">The kinds of records and their fields. A change applies to everyone at once and is saved in the history.</p>
 {% if warnings %}<div class="flash err">{% for w in warnings %}{{ w }}<br>{% endfor %}</div>{% endif %}
 <div class="tablewrap"><table><thead><tr><th>Type</th><th>ID prefix</th><th>Records</th><th>Fields</th><th title="Who may see the records">Read</th><th title="Who may add records">Create</th><th title="Who may change, archive and delete">Edit</th><th>Order in the menu</th><th></th></tr></thead><tbody>

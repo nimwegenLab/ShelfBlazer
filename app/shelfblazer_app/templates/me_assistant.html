@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% from "_me_tabs.html" import header with context %}{% block title %}AI assistant · My account{% endblock %}
+{% block body %}{{ header() }}<div class="help assistant">
+<p>Tell an AI assistant what you have, in plain words, and it enters the records for you: <em>“Add {{ ex_a }} called …”</em>, <em>“Add these twenty {{ ex }}s from my table”</em>. It checks for duplicates first and follows the lab’s conventions. It can search too: <em>“Which {{ ex }}s did I add this month?”</em></p>
+<p>It works as you: with your rights, nothing more, and every change it makes carries your name (marked “via MCP” in the History). It works with Claude Code, and with other assistants that support MCP.</p>
+
+{% if new_token %}<div class="infobox"><p><strong>Token created for “{{ new_token.name }}”.</strong> Now <a href="#connect">connect Claude Code (step 3)</a>.</p></div>{% elif tokens %}<div class="infobox"><p><strong>Set up</strong> on {{ tokens|length }} computer{{ 's' if tokens|length > 1 }}: {% for t in tokens %}{{ t.name }} <span class="muted">(last used {{ t.used_text }})</span>{{ ', ' if not loop.last }}{% endfor %}. Open Claude Code there and ask away. To add another computer, follow the steps below.</p></div>
+{% else %}<div class="infobox"><p><strong>Not set up yet.</strong> It takes about two minutes, once per computer: follow the four steps below.</p></div>{% endif %}
+
+<h2 class="part">Install Claude Code</h2>
+<p>If it is not on your computer yet, install it from <a href="https://claude.com/claude-code">claude.com/claude-code</a> and sign in once. You will also need a terminal: Terminal on a Mac, PowerShell on Windows.</p>
+
+<h2 class="part">Create a token for this computer</h2>
+<p>A token is a password just for the assistant: it lets the assistant in as you, and you can withdraw it here at any time. Name it after the computer, so you can tell your tokens apart.</p>
+<form method="post" action="/me/tokens#connect" class="card-form"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+<label>Computer<input name="name" maxlength="80" required placeholder="for example: my laptop"></label>
+<label>Your ShelfBlazer password<input type="password" name="current" autocomplete="current-password" required></label>
+<details class="small"><summary>Options</summary>
+<label>Expires after (days; at most {{ token_max }})<input type="number" name="days" value="{{ token_default }}" min="1" max="{{ token_max }}" required></label>
+{% if is_admin %}<label class="chk"><input type="checkbox" name="admin"> Administrator token (for administrator tools; {{ admin_token_max }} days at most; works only while you are an administrator)</label>{% endif %}
+</details>
+<button class="primary">Create token</button></form>
+
+<h2 class="part" id="connect">Connect Claude Code</h2>
+{% if new_token %}<div class="infobox"><p><strong>Your token for “{{ new_token.name }}”</strong>, shown only this once: if you leave the page before this step is done, create a new one.</p>
+<pre class="seq" id="new-token">{{ new_token.text }}</pre><p><button type="button" class="btn" data-copy="#new-token">Copy token</button> <span class="muted copy-note" aria-live="polite"></span></p></div>{% endif %}
+<p>Open a terminal and run these two commands, one after the other: click <strong>Copy</strong>, paste into the terminal, press Enter.</p>
+<p><strong>a.</strong> This one waits for the token: {% if new_token %}click <strong>Copy token</strong> above{% else %}copy the token you created in step 2{% endif %}, paste it, press Enter. Nothing appears while you paste: that is on purpose, so the token stays off the screen.</p>
+<pre class="seq" id="cmd-read">read -rs SBT</pre><p><button type="button" class="btn" data-copy="#cmd-read">Copy</button> <span class="muted copy-note" aria-live="polite"></span></p>
+<p><strong>b.</strong> This one connects Claude Code to ShelfBlazer, for every folder on this computer:</p>
+<pre class="seq" id="cmd-add">claude mcp add --scope user --transport http shelfblazer {{ request.base_url }}mcp --header "Authorization: Bearer $SBT"; unset SBT</pre><p><button type="button" class="btn" data-copy="#cmd-add">Copy</button> <span class="muted copy-note" aria-live="polite"></span></p>
+<details class="small"><summary>On Windows (PowerShell 7)</summary><pre class="seq">$env:SBT = Read-Host -MaskInput "Token"
+claude mcp add --scope user --transport http shelfblazer {{ request.base_url }}mcp --header "Authorization: Bearer $env:SBT"; Remove-Item Env:SBT</pre></details>
+<details class="small"><summary>Another assistant (not Claude Code)</summary><p>Give it the address <code>{{ request.base_url }}mcp</code> (MCP over HTTP) and send the token as the header <code>Authorization: Bearer &lt;token&gt;</code>.</p></details>
+
+<h2 class="part">Try it</h2>
+<p>Start Claude Code, in any folder, and ask: <em>“Using ShelfBlazer, which record types are there?”</em> Then try <em>“Add {{ ex_a }} called test-1”</em>, and archive test-1 here afterwards.</p>
+<p class="muted small">It does not connect? Run <code>claude mcp list</code>: it should say <em>Connected</em>. If not, the token was probably mistyped or has expired: create a new one and repeat step 3, pasting the token rather than typing it.</p>
+
+{% if tokens %}<h2 id="tokens">Your tokens</h2>
+{% set any_admin = tokens|selectattr('scope', 'equalto', 'admin')|list %}
+<table class="plain"><thead><tr><th>Computer</th>{% if any_admin %}<th>Scope</th>{% endif %}<th>Expires</th><th>Last used</th><th></th></tr></thead><tbody>
+{% for t in tokens %}<tr><td>{{ t.name }}</td>{% if any_admin %}<td>{{ t.scope }}</td>{% endif %}<td>{{ t.expires_text }}</td><td>{{ t.used_text }}</td><td><form method="post" action="/me/tokens/{{ t.id }}/revoke" data-confirm="Revoke the token for {{ t.name }}? The assistant on that computer stops working."><input type="hidden" name="csrf_token" value="{{ csrf }}"><button>Revoke</button></form></td></tr>{% endfor %}</tbody></table>
+<p class="muted small">Lost a laptop, or stopped using a computer? Revoke its token. Changing your password revokes all of them.</p>{% endif %}
+
+<h2>Take care</h2>
+<p>What the assistant reads goes to your AI service’s account, so keep confidential things out of ShelfBlazer. Treat the token like a password: never paste it into a chat or a shared document. Read what the assistant proposes before you accept it, as you would a colleague’s. More in <a href="/help#assistant">Help</a>.</p>
+</div>{% endblock %}

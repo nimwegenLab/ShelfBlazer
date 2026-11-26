@@ -13,7 +13,7 @@
 <td>{% if not it.asked %}<span class="muted">Linked from {{ it.via }}{{ ': it moves too, because a lab record cannot link to a personal one.' if not it.relink else '; the moved records link to ' ~ it.relink ~ ' instead.' }}</span>
 {% elif it.lookalikes %}<span class="muted">The lab collection already has {% for l in it.lookalikes %}<a class="rid" href="/r/{{ l.id }}">{{ l.id }}</a> {{ l.name }}{{ ', ' if not loop.last }}{% endfor %}: check it is not the same.</span>{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>
-{% if not plan.problems %}<h2>What moving means</h2><ul>
+{% if not plan.problems %}<h2>What moving means <a class="helplink" href="/help#moving">Help</a></h2><ul>
 <li><strong>You cannot undo it.</strong> Only an administrator can.</li>
 <li>Each record gets a new lab ID (shown above). <strong>Relabel the tubes.</strong> The old ID still opens the record.</li>
 <li>The record and its history join the lab collection: everybody who can see the type sees it, and it is edited like any lab record. Its owner stays the same.</li></ul>

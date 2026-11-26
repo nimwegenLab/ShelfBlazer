@@ -110,8 +110,27 @@ class TestPlan(Base):
 
     def test_same_names_are_warned_about_not_refused(self):
         p = self.plan("Name\nA0\nnew\nNEW\n")
-        self.assertEqual([e["warnings"] for e in p["entries"]], [[f"same name as {self.a[0]}"], [], ["same name as line 3"]])
+        self.assertEqual([e["warnings"] for e in p["entries"]], [[f"possible duplicate of {self.a[0]} a0: same name"], [], ["same name as line 3"]])
         self.assertEqual(p["errors"], 0)
+
+    def test_the_rules_file_decides_what_the_preview_warns_about(self):
+        import json, os
+        os.makedirs(os.path.join(self.repo, "config", "checks"), exist_ok=True)
+        with open(os.path.join(self.repo, "config", "checks", "strain.yaml"), "w") as fh:
+            json.dump({"tables": {"s": [["(?i)dh5alfa", "DH5alpha"]]}, "fields": {"name": {"fix": ["s"]}},
+                       "duplicate_keys": [{"label": "same genotype", "parts": [{"field": "genotype", "normalise": ["casefold"]}]}]}, fh)
+        self.store.reload()
+        p = self.plan("Name\tGenotype\nDh5alfa\tg\nother\tG\nthird\tz\n")        # the genotype g is the one the setup strains have
+        w = [e["warnings"] for e in p["entries"]]
+        self.assertIn("Name: suggested \u201cDH5alpha\u201d", w[0])
+        self.assertTrue(any(x.startswith("possible duplicate of ") and x.endswith("same genotype") for x in w[0]))
+        self.assertIn("same genotype as line 2", w[1])                                          # another row of the file
+        self.assertEqual(w[2], [])
+        self.assertEqual(p["errors"], 0)
+
+    def test_an_update_warns_only_about_what_it_changes(self):
+        p = self.plan(f"ID\tGenotype\n{self.a[0]}\tg2\n")                                     # a0 and a1 share a name? no: names differ
+        self.assertEqual(p["entries"][0]["warnings"], [])
 
     def test_the_column_choice_is_checked(self):
         header, rows, _ = ti.parse("a\tb\nx\ty\n")

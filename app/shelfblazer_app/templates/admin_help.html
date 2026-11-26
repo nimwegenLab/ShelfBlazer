@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block title %}Help text{% endblock %}
+{% block body %}<p class="subnav"><a href="/admin/users">Users</a> · <a href="/admin/types">Types</a> · <strong>Help text</strong></p><h1>Help text</h1>
+<p class="muted">The lab’s own section of the <a href="/help">Help page</a>, shown right after its summary: how the types are organised, what tells similar ones apart, where things are kept, who to ask. The first line, <code># Title</code>, is the title of the section. Simple Markdown: blank lines between paragraphs, <code>-</code> lists, <code>**bold**</code>, <code>*italic*</code>, links, and IDs that link. Empty it to remove the section. Each save is one commit in the data repository.</p>
+{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+{% if starter and not preview %}<p class="callout">There is no help text yet. The box holds a starting point: replace it, then Save.</p>{% endif %}
+<form method="post" action="/admin/help" class="edit"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+<label>Text <span class="muted small">(at most {{ max_chars }} characters)</span><textarea name="text" rows="18" maxlength="{{ max_chars }}" spellcheck="true">{{ text }}</textarea></label>
+<div class="actions"><button class="primary" name="action" value="save">Save</button> <button name="action" value="preview">Preview</button> <a class="btn" href="/help">View the Help page</a></div></form>
+{% if preview %}<h2>Preview</h2>{% if title or body %}<h3>{{ title or 'In this lab' }}</h3><div class="notes labtext">{{ md(body)|safe }}</div>{% else %}<p class="muted">Empty: saving this removes the section.</p>{% endif %}{% endif %}{% endblock %}

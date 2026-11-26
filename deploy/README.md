@@ -16,6 +16,7 @@ Generic, site-independent files. Anything that names a host, a user, a path or a
    `X-Forwarded-For` must be **overwritten** with the client address (nginx: `proxy_set_header X-Forwarded-For $remote_addr;`, not
    `$proxy_add_x_forwarded_for`): the app trusts the header and takes its first address, so an appended header lets a client choose
    its own address and get around the login throttling. Caddy's `reverse_proxy` does this by default.
+   If the MCP endpoint is enabled (`SHELFBLAZER_MCP=1` in the container's environment), `/mcp` needs nothing special from the proxy: answers are plain JSON, no streaming or buffering setting. Do not enable it before the authentication review (ROADMAP).
 2. A host folder for the runtime home (`data/` and `instance/`), owned by the user the container runs as (`SB_UID`, `SB_GID`).
 3. Create the data once on the server: `shelfblazer init-data --empty` (then `set-password admin`), or copy an existing `data/` and `instance/`. Never copy over a live instance.
 4. Load the image, set `.env`, start with `compose.proxy.yaml`, check `curl http://127.0.0.1:8000/login` returns 200.
