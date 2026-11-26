@@ -52,9 +52,12 @@ class ArchiveTests(unittest.TestCase):
     def git(self, repo, *args):
         return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True, env=self.env).stdout
 
-    def backup(self, **extra):
+    def backup_to(self, dest, **extra):
         env = {**self.env, "GPG_RECIPIENT": RECIPIENT, **extra}
-        return subprocess.run(["bash", str(BACKUP), str(self.home), str(self.dest)], capture_output=True, text=True, env=env)
+        return subprocess.run(["bash", str(BACKUP), str(self.home), str(dest)], capture_output=True, text=True, env=env)
+
+    def backup(self, **extra):
+        return self.backup_to(self.dest, **extra)
 
     def archives(self):
         return sorted(p.name for p in self.dest.glob("shelfblazer-*.tar.gz.gpg"))
@@ -98,6 +101,36 @@ class ArchiveTests(unittest.TestCase):
         self.assertNotIn(f"shelfblazer-{names['old_daily']}.tar.gz.gpg", left)
         self.assertNotIn(f"shelfblazer-{names['ancient_first']}.tar.gz.gpg", left)
         self.assertIn(f"shelfblazer-{today}.tar.gz.gpg", left)
+
+    @unittest.skipUnless(have("rsync"), "rsync is needed")
+    def test_a_remote_destination_gets_the_archive_and_the_retention(self):
+        # a stand-in for ssh that drops the host name and runs the rest here: "localhost:DIR" then means DIR on this machine
+        fake = self.root / "fakessh"
+        fake.write_text('#!/bin/sh\nshift\nexec "$@"\n')
+        fake.chmod(0o755)
+        today = datetime.datetime.now(datetime.timezone.utc).date()
+        old = today - datetime.timedelta(days=45)
+        if old.day == 1:
+            old -= datetime.timedelta(days=1)
+        self.dest.mkdir()
+        (self.dest / f"shelfblazer-{old}.tar.gz.gpg").write_bytes(b"x")
+        (self.dest / "unrelated.txt").write_text("keep me")
+        r = self.backup_to(f"localhost:{self.dest}", RSYNC_RSH=str(fake))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.archives(), [f"shelfblazer-{today}.tar.gz.gpg"])            # uploaded; the expired one removed over there
+        self.assertTrue((self.dest / "unrelated.txt").exists())                           # nothing else touched
+        self.assertTrue((self.dest / "last-archive").exists())
+        (archive,) = list(self.dest.glob("shelfblazer-*.tar.gz.gpg"))
+        self.assertNotIn(MARKER, archive.read_bytes())
+        restored = self.root / "restored"
+        r = subprocess.run(["bash", str(RESTORE), str(archive), str(restored)], capture_output=True, text=True, env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((restored / "instance" / "secret.key").read_bytes(), MARKER)
+
+    @unittest.skipUnless(have("rsync"), "rsync is needed")
+    def test_a_failing_remote_is_reported(self):
+        r = self.backup_to("localhost:/nonexistent-dir/x", RSYNC_RSH="false")
+        self.assertNotEqual(r.returncode, 0)
 
     def test_refuses_without_a_usable_recipient(self):
         r = subprocess.run(["bash", str(BACKUP), str(self.home), str(self.dest)], capture_output=True, text=True, env=self.env)

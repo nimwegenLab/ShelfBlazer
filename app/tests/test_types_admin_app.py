@@ -196,6 +196,50 @@ class TestSettings(Admin):
         r = self.p("/admin/types/strain/settings", {"name": " ", "color": "", "columns": ["storage"]})
         self.assertEqual(self.store.schemas["strain"]["name"], "Strain")
 
+    def test_record_picture_is_chosen_among_the_file_fields(self):
+        url = "/admin/types/strain/settings"
+        base = {"name": "Strain", "color": "", "columns": ["storage"]}
+        self.assertNotIn('name="thumbnail"', self.a.get("/admin/types/strain").text)            # no File field, no choice
+        self.p("/admin/types/strain/fields/add", {"label": "Photo", "type": "file"})
+        self.p("/admin/types/strain/fields/add", {"label": "Gel", "type": "file"})
+        page = self.a.get("/admin/types/strain").text
+        self.assertIn('name="thumbnail"', page)
+        self.p(url, dict(base, thumbnail="photo"))
+        self.assertEqual(self.store.schemas["strain"]["thumbnail"], "photo")
+        self.p(url, base)                                                                         # not sent: left as it is
+        self.assertEqual(self.store.schemas["strain"]["thumbnail"], "photo")
+        self.assertTrue(self.flashes(self.p(url, dict(base, thumbnail="name"))))                  # not a File field
+        self.assertEqual(self.store.schemas["strain"]["thumbnail"], "photo")
+        self.p("/admin/types/strain/fields/photo/hidden", {})                                     # hiding it drops the setting
+        self.assertNotIn("thumbnail", self.store.schemas["strain"])
+        self.p("/admin/types/strain/fields/photo/hidden", {})
+        self.p(url, dict(base, thumbnail="gel"))
+        self.p(url, dict(base, thumbnail=""))
+        self.assertNotIn("thumbnail", self.store.schemas["strain"])
+
+    def test_a_file_field_can_be_limited_to_pictures(self):
+        self.p("/admin/types/strain/fields/add", {"label": "Gel", "type": "file", "pictures_only": "on"})
+        self.p("/admin/types/strain/fields/add", {"label": "Papers", "type": "file"})
+        fields = {f["key"]: f for f in self.store.schemas["strain"]["fields"]}
+        self.assertTrue(fields["gel"].get("pictures_only"))
+        self.assertNotIn("pictures_only", fields["papers"])
+        rid = self.store.create("strain", self.users.get("alice"), "S1", {})
+        alice = self.users.get("alice")
+        with self.assertRaises(Exception) as cm:
+            self.store.add_attachment(rid, alice, "notes.pdf", b"%PDF", field="gel")
+        self.assertIn("pictures only", str(cm.exception))
+        self.store.add_attachment(rid, alice, "gel1.PNG", b"\x89PNG", field="gel")
+        self.store.add_attachment(rid, alice, "notes.pdf", b"%PDF", field="papers")             # other fields are not limited
+        r = self.client("alice").get(f"/r/{rid}/edit")
+        self.assertIn('accept="image/*,.heic,.heif"', r.text)
+        self.p("/admin/types/strain/fields/gel/update", {"label": "Gel", "pictures_present": "1"})   # box cleared
+        self.assertNotIn("pictures_only", {f["key"]: f for f in self.store.schemas["strain"]["fields"]}["gel"])
+        self.p("/admin/types/strain/fields/gel/update", {"label": "Gel"})                          # box not on the form: unchanged
+        self.p("/admin/types/strain/fields/gel/update", {"label": "Gel", "pictures_present": "1", "pictures_only": "on"})
+        self.assertTrue({f["key"]: f for f in self.store.schemas["strain"]["fields"]}["gel"].get("pictures_only"))
+        self.p("/admin/types/strain/fields/gel/update", {"label": "Gel"})
+        self.assertTrue({f["key"]: f for f in self.store.schemas["strain"]["fields"]}["gel"].get("pictures_only"))
+
     def test_hiding_a_field_removes_it_from_the_list_columns(self):
         self.assertIn("storage", self.store.schemas["strain"]["list_columns"])
         self.p("/admin/types/strain/fields/storage/hidden")
@@ -213,11 +257,13 @@ class TestOrder(Admin):
         import re
         return re.findall(r'<a class="l" href="/t/([a-z-]+)"', c.get("/").text)
 
-    def test_default_order_is_the_builtin_sequence_then_alphabetical(self):
+    def test_types_not_in_the_saved_order_follow_alphabetically(self):
         self.p("/admin/types/new", {"name": "Zinc", "prefix": "ZN"})
         self.p("/admin/types/new", {"name": "Acid", "prefix": "AC"})
-        self.assertEqual(self.menu(self.a), ["strain", "plasmid", "acid", "zinc"])
-        self.assertEqual(self.store.type_order, [])
+        self.assertEqual(self.menu(self.a), ["strain", "plasmid", "acid", "zinc"])      # the saved order, then the rest
+        self.assertEqual(self.store.type_order, ["strain", "plasmid"])
+        self.store.type_order = []                                                     # no saved order: alphabetical, no type favoured
+        self.assertEqual(self.menu(self.a), ["acid", "plasmid", "strain", "zinc"])
 
     def test_move_up_and_down_changes_menu_home_and_admin_page_for_everybody(self):
         self.p("/admin/types/plasmid/order", {"direction": "up"})
@@ -250,7 +296,7 @@ class TestOrder(Admin):
             c = self.client(who)
             r = c.post("/admin/types/plasmid/order", data={"direction": "up"}) if who is None else self.p("/admin/types/plasmid/order", {"direction": "up"}, c)
             self.assertIn(r.status_code, (303, 403))
-        self.assertEqual(self.store.type_order, [])
+        self.assertEqual(self.store.type_order, ["strain", "plasmid"])
         r = self.p("/admin/types/plasmid/order", {"direction": "sideways"})
         self.assertTrue(self.flashes(r))
         self.assertEqual(self.p("/admin/types/nope/order", {"direction": "up"}).status_code, 404)

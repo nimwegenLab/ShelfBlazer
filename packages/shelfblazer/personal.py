@@ -219,7 +219,7 @@ def plan_to_personal(store, owner, rids):
 
 def apply_to_personal(store, owner, rids):
     """Move lab records into ``owner``'s personal collection in one commit by the maintenance account, as ``plan_to_personal``
-    describes: new personal IDs (``BS-P12``), the lab ID kept in "former_ids" so it still opens the record, files and mentions follow.
+    describes: new personal IDs (``ST-P12``), the lab ID kept in "former_ids" so it still opens the record, files and mentions follow.
     The lab numbers stay unused. Returns {old ID: new ID}; raises ValidationError when the plan has problems."""
     with store._write_lock():
         plan = plan_to_personal(store, owner, rids)

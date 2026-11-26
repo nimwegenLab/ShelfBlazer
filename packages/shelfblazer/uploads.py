@@ -10,6 +10,10 @@ jar app apk ipa dmg pkg deb rpm bin run appimage html htm xhtml shtml svg xht sw
 """.split())
 
 
+# A File field set to "pictures only" takes these (HEIC is what phones save; the browser may not be able to show it, but it is a photo).
+PICTURE_EXTENSIONS = frozenset("jpg jpeg png webp gif avif heic heif tif tiff bmp".split())
+
+
 class UploadError(ValueError):
     pass
 
@@ -30,9 +34,11 @@ def safe_name(name):
     return f"{stem}.{ext}" if ext else stem
 
 
-def check(name, size):
+def check(name, size, pictures_only=False):
     """Raise UploadError with a sentence for people when the file may not be stored."""
     ext = name.rpartition(".")[2].lower() if "." in name else ""
+    if pictures_only and ext not in PICTURE_EXTENSIONS:
+        raise UploadError("this field takes pictures only (jpg, png, webp, gif, avif, heic, tif, bmp)")
     if ext in BLOCKED_EXTENSIONS:
         raise UploadError(f"programs and scripts cannot be uploaded (.{ext})")
     if size == 0:

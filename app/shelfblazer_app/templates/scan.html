@@ -9,7 +9,7 @@
 {% if add and prefill %}<p>Add it, so that everybody finds it next time:</p>
 <p>{% for slug, name in add %}<a class="btn primary" href="/t/{{ slug }}/new?code={{ prefill|urlencode }}" data-hue="{{ type_hue(slug) }}">Add as {{ name|lower }}</a> {% endfor %}</p>{% endif %}
 {% if link_types and prefill %}<form class="scanlink" method="get" action="/scan/link"><p>{{ 'Or add' if add else 'Add' }} {{ 'it' if codes|length == 1 else 'them' }} to an entry that is already there (the same product, a new package):</p>
-{% for c in codes %}<input type="hidden" name="c" value="{{ c }}">{% endfor %}<p class="row"><input class="mono" name="rid" data-ref-to="{{ link_types }}" data-multiple="0" placeholder="ID, e.g. CS-12" aria-label="The entry to add the code to"> <button>Continue</button></p></form><script src="/static/picker.js" defer></script>{% endif %}
+{% for c in codes %}<input type="hidden" name="c" value="{{ c }}">{% endfor %}<p class="row"><input class="mono" name="rid" data-ref-to="{{ link_types }}" data-multiple="0" placeholder="ID, e.g. {{ schemas[link_types.split(',')[0]].prefix if link_types.split(',')[0] in schemas else 'AB' }}-12" aria-label="The entry to add the code to"> <button>Continue</button></p></form><script src="/static/picker.js" defer></script>{% endif %}
 {% if not types %}<p class="muted">No record type is set up for scanning. An administrator adds <code>"scan_fields": ["barcodes"]</code> to a type definition (see the README).</p>{% endif %}
 {% endif %}
 <p><a class="btn" href="/?scan=1">Scan another</a> <a class="btn" href="/">Home</a></p>{% endblock %}

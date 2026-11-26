@@ -59,7 +59,9 @@ def register(app, c):
                 key = (r["type"], "lab" if not record_ids.is_personal(r["id"]) else "mine" if r["created_by"] == u["uid"] else r["created_by"])
                 groups.setdefault(key, []).append(r)
             order = sorted(groups, key=lambda k: (list(store.schemas).index(k[0]), k[1] != "lab", k[1] != "mine", display(k[1]).casefold() if k[1] not in ("lab", "mine") else ""))
+            readable = [s for s in c.ordered_types() if s in store.readable_types(u)]
             return render(request, "home.html", q=q, archived=bool(archived), fuzzy=fuzzy != "0", total=len(results),
+                          example=record_ids.make(store.schemas[readable[0]]["prefix"], 1) if readable else "AB-1",
                           groups=[(s, store.schemas[s]["name"] + "s" if coll == "lab" else collection_title(store.schemas[s], u["uid"] if coll == "mine" else coll, coll == "mine"),
                                    groups[(s, coll)], "" if coll == "lab" else coll) for s, coll in order])
         counts = []
@@ -79,7 +81,7 @@ def register(app, c):
             counts.append((s, store.schemas[s]["name"], sum(not r["archived"] for r in recs), sum(r["archived"] for r in recs)))
         mine_counts = [(s, n, sum(not r["archived"] for r in own.get(s, [])), sum(r["archived"] for r in own.get(s, [])))
                        for s, n in c.my_types(u)]
-        example = "ST-1"
+        example = "AB-1"
         if types:
             first = [r for r in by_type.get(types[0], []) if not record_ids.is_personal(r["id"])]
             example = max(first, key=record_ids.sort_key)["id"] if first else record_ids.make(store.schemas[types[0]]["prefix"], 1)

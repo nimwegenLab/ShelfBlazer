@@ -296,9 +296,11 @@ class TestTypeColours(Base):
 
     def test_unknown_or_hex_colours_are_ignored(self):
         c = self.client("alice")
+        self.store.schemas["strain"].pop("color")
+        derived = self.hue_on(c.get("/").text, "/t/strain")                              # no colour: a slot derived from the name
         for bad in ("#ff0000", "magenta", "", 3, None, "BLUE"):
             self.store.schemas["strain"]["color"] = bad
-            self.assertEqual(self.hue_on(c.get("/").text, "/t/strain"), 1, repr(bad))   # falls back to the default
+            self.assertEqual(self.hue_on(c.get("/").text, "/t/strain"), derived, repr(bad))   # falls back to the derived slot
         self.assertNotIn("#ff0000", c.get("/t/strain").text)
 
     def test_custom_types_get_a_stable_palette_slot(self):

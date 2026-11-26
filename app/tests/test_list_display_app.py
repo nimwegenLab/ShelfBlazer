@@ -196,7 +196,7 @@ class TestStorageDisplayModes(Base):
         css = read("style.css")
         self.assertRegex(css, r"\.outdated\{[^}]*color:var\(--warnfg\)")
         with open(os.path.join(STATIC, "..", "templates", "list.html"), encoding="utf-8") as fh:
-            self.assertIn('title="This location comes from the old database', fh.read())
+            self.assertIn('title="This location was imported from a previous system', fh.read())
 
 
 if __name__ == "__main__":

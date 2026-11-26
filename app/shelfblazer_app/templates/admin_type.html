@@ -9,6 +9,8 @@
 <label>Name<input name="name" value="{{ schema.name }}" required maxlength="40"></label>
 <label>Colour<select name="color"><option value="">default</option>{% for col in colors %}<option {% if schema.color == col %}selected{% endif %}>{{ col }}</option>{% endfor %}</select></label>
 <label>Icon<select name="icon"><option value="">default</option>{% for ic in icons %}<option {% if schema.icon == ic %}selected{% endif %}>{{ ic }}</option>{% endfor %}</select></label>
+{% if file_fields %}<label>Record picture<select name="thumbnail"><option value="">None</option>{% for k, l in file_fields %}<option value="{{ k }}" {% if schema.thumbnail == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+<p class="muted small">The first image in this File field shows on the record page and as the cover on the cards. Its file chooser then takes one image and shrinks it before upload.</p>{% endif %}
 <fieldset class="cols"><legend>Columns in the list</legend>{% for key, label, fixed in columns %}<label class="chk"><input type="checkbox" name="columns" value="{{ key }}" {% if key in schema.list_columns %}checked{% endif %} {% if fixed %}disabled{% endif %}> {{ label }}</label>{% endfor %}</fieldset>
 <fieldset class="cols perms"><legend>Who may do what</legend>
 <label>Seeing the records<select name="perm_read"><option value="" {% if not perm.read %}selected{% endif %}>Everyone signed in</option><option value="admin" {% if perm.read == 'admin' %}selected{% endif %}>Administrators only (the type is hidden from everyone else)</option></select></label>
@@ -27,6 +29,7 @@
 <div class="frow"><label>Label<input name="label" value="{{ f.label }}" required></label>
 {% if f.type in ('text', 'longtext') %}<label>Type<select name="type"><option value="text" {% if f.type == 'text' %}selected{% endif %}>One line</option><option value="longtext" {% if f.type == 'longtext' %}selected{% endif %}>Several lines (Markdown)</option></select></label>{% endif %}
 {% if f.key != 'name' and f.type not in ('bool', 'computed', 'file') %}<input type="hidden" name="required_present" value="1"><label class="chk"><input type="checkbox" name="required" {% if f.required %}checked{% endif %}> required</label>{% endif %}</div>
+{% if f.type == 'file' %}<input type="hidden" name="pictures_present" value="1"><label class="chk"><input type="checkbox" name="pictures_only" {% if f.pictures_only %}checked{% endif %}> pictures only (jpg, png, webp, gif, avif, heic, tif, bmp)</label>{% endif %}
 {% if f.type in ('select', 'multiselect') and not f.source %}<div class="frow"><div class="optlist"><span class="muted small">Options (tick to remove):</span>
 {% for o in f.options %}<label class="chk"><input type="checkbox" name="remove_options" value="{{ o }}" {% if o in it.used %}disabled{% endif %}> {{ o }}{% if o in it.used %} <span class="muted small">(in use)</span>{% endif %}</label>{% endfor %}</div>
 <label>Add options (one per line)<textarea name="add_options" rows="2"></textarea></label></div>{% endif %}
@@ -36,7 +39,7 @@
 <div class="actions"><button class="primary">Save</button>
 <button formaction="/admin/types/{{ slug }}/fields/{{ f.key }}/hidden" {% if f.key == 'name' %}disabled{% endif %}>{{ 'Show again' if f.hidden else 'Hide' }}</button>
 {% if it.movable %}<button formaction="/admin/types/{{ slug }}/fields/{{ f.key }}/move" name="direction" value="up" aria-label="Move up" title="Move up">↑</button><button formaction="/admin/types/{{ slug }}/fields/{{ f.key }}/move" name="direction" value="down" aria-label="Move down" title="Move down">↓</button>{% endif %}</div>
-{% else %}<p class="muted small">Managed by the system (kept from the old database or used for attachments).</p>{% endif %}
+{% else %}<p class="muted small">Managed by the system (imported from a previous system, or used for attachments).</p>{% endif %}
 </form>{% endfor %}
 
 <h2>Add a field</h2>
@@ -46,16 +49,17 @@
 <label>Key (optional; letters, digits and _; chosen from the label when empty; fixed once saved)<input name="key" class="mono" maxlength="32" pattern="[a-z][a-z0-9_]*" style="max-width:14rem"></label>
 <label class="chk"><input type="checkbox" name="required"> required</label>
 <div class="only" data-types="select multiselect"><label>Options (one per line)<textarea name="options" rows="4"></textarea></label></div>
+<div class="only" data-types="file"><label class="chk"><input type="checkbox" name="pictures_only"> pictures only (jpg, png, webp, gif, avif, heic, tif, bmp)</label></div>
 <div class="only" data-types="ref"><label>Links to<select name="to"><option value="">any type</option>{% for s, n in others %}<option value="{{ s }}">{{ n }}</option>{% endfor %}</select></label></div>
-<div class="only" data-types="computed"><label>Formula<input class="mono" name="expr" placeholder="count(referenced_by('strain'))"></label>
+<div class="only" data-types="computed"><label>Formula<input class="mono" name="expr" placeholder="{{ "count(referenced_by('" ~ fx.src.slug ~ "'))" if fx.src else 'age_days()' }}"></label>
 <div class="formula-try" data-slug="{{ slug }}"><label class="chk">Try it on record <input class="mono" data-try-id placeholder="newest" style="width:8rem"></label> <button type="button" data-try>Try</button> <span class="formula-out muted" aria-live="polite"></span></div>
 <details><summary>Formula help and examples</summary>
 <p class="muted small">One expression using the type's field keys plus <code>id name type owner created updated archived</code>. Results are calculated when shown, never stored.
 Functions: <code>count sum min max round abs str upper lower strip join concat default unique flatten contains values names ids refs referenced_by age_days updated_days days_since</code>. Operators: <code>+ - * / // %</code>, comparisons, <code>and or not</code>, <code>x if cond else y</code>.</p>
 <ul class="examples">
-<li><button type="button" class="link" data-example="count(referenced_by('strain'))">Number of strains pointing to this record</button></li>
-<li><button type="button" class="link" data-example="referenced_by('strain')">The strains pointing to this record (as links)</button></li>
-<li><button type="button" class="link" data-example="join(', ', unique(flatten(values(refs('plasmid'), 'resistance'))))">Resistance taken from the linked plasmids</button></li>
+{% if fx.src %}<li><button type="button" class="link" data-example="count(referenced_by('{{ fx.src.slug }}'))">Number of {{ fx.src.plural }} pointing to this record</button></li>
+<li><button type="button" class="link" data-example="referenced_by('{{ fx.src.slug }}')">The {{ fx.src.plural }} pointing to this record (as links)</button></li>{% endif %}
+{% if fx.ref %}<li><button type="button" class="link" data-example="join(', ', unique(flatten(values(refs('{{ fx.ref.key }}'), '{{ fx.ref.vkey }}'))))">{{ fx.ref.vlabel }} taken from the linked {{ fx.ref.target }}</button></li>{% endif %}
 <li><button type="button" class="link" data-example="age_days()">Age of the record in days</button></li>
 <li><button type="button" class="link" data-example="updated_days()">Days since the last update</button></li></ul></details></div>
 <div class="actions"><button class="primary">Add field</button></div></form>

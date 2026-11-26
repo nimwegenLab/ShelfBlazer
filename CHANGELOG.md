@@ -1,11 +1,25 @@
 # Changelog
 
 ShelfBlazer follows [Semantic Versioning](https://semver.org): `MAJOR.MINOR.PATCH`.
-Until 1.0, a MINOR release may add features or change behaviour, and PATCH releases are fixes only.
+Until 1.0, a MINOR release may add features or change behaviour, and PATCH releases are fixes and small additions that need nothing from the person upgrading.
 A change to the record or type-definition format in `data/` always gets an **Upgrading** note.
 
 To release: set the same version in `app/pyproject.toml` and `packages/pyproject.toml`, add a section below, commit, then tag `vMAJOR.MINOR.PATCH`.
 (Reinstall with `pip install -e packages -e app` afterwards so the version shown in the app follows.)
+
+## [Unreleased]
+
+## [0.4.1] - 2026-11-26
+
+### Added
+- **License:** ShelfBlazer is released under the GNU Affero General Public License, version 3 or later (`LICENSE`, and `license` in both `pyproject.toml` files).
+- `deploy/backup-archive.sh` can send the encrypted archive to a remote `user@host:path` with rsync over ssh (retention applied there too, nothing but rsync needed on the remote side), so the server needs no space for the archives.
+- Types page: *Record picture* in the type settings chooses the File field whose first image is the record's picture (no more hand-editing `thumbnail` in the type file). Hiding that field clears the setting.
+- File fields can be limited to pictures (*pictures only* on the Types page, `pictures_only: true` in the type file): other files are refused on upload, and the file chooser offers images.
+- MCP `get_picture` returns a record's picture (the type's `thumbnail` field) as an image the assistant can look at; `get_record` names it. Read only, same visibility as the record.
+
+### Changed
+- README: a new opening (what ShelfBlazer is, six things to know, the quick start first), the AI assistant, checks and Help page at the top of *What it does*, and a License section.
 
 ## [0.4.0] - 2026-11-26
 
@@ -18,6 +32,9 @@ To release: set the same version in `app/pyproject.toml` and `packages/pyproject
 - **MCP endpoint (off unless `SHELFBLAZER_MCP=1`)**: `/mcp` lets a person's own Claude Code search, create, update, archive and import records as that person, with member rights even for administrators. Personal access tokens on the account page (name, expiry, created with the password, shown once and pasted at a hidden prompt so it never enters the shell history, stored hashed, revoked with the account and on any password change; wrong tokens throttled on their own budget, never locking a valid token or a sign-in). Tools: `list_types`, `search_records`, `get_record`, `check_record`, `create_record`, `update_record`, `archive_record`, `restore_record`, `import_table`, `undo_import`; resources `conventions://<type>` and `schema://<type>`. Commits made this way say "(via MCP)". Needs the `mcp` Python package. Not meant to be switched on for a group before the authentication review.
 - Check before saving: when a new or edited record looks like a duplicate of one you can see (same name by default; what counts as "the same" can be set per type in `config/checks/<type>.yaml` in the data repository), the form shows the records and lets you save anyway. The same file can give suggested fixes (a button fills the field) and warnings about conventions, such as a linked record named in a name but not linked.
 
+### Changed
+- The shared text no longer names one group's types or history: example IDs and formula examples come from the instance's own types, the assistant's instructions and tool descriptions are generic (a group's own rules stay in `config/checks/<type>.yaml`), and the keeper imported from a previous system is shown under the label of its field in the type definition ("Previous owner" when the type has none). A test renders every main page for a made-up instance to keep it so.
+
 ### Upgrading
 - **No change to existing records or type definitions.**
 - Every type now gets the same-name check, so a form can show the *Check before saving* panel for names that already exist (archived records included). It only asks once; nothing is blocked. To refine or silence it, add `config/checks/<type>.yaml` to the data repository (README, "Checks before saving"); a file with a mistake is reported on the Types page and ignored.
@@ -26,6 +43,7 @@ To release: set the same version in `app/pyproject.toml` and `packages/pyproject
 - The MCP endpoint is off unless `SHELFBLAZER_MCP=1`, and needs the `mcp` Python package: run `pip install -e packages -e app` again (or rebuild the image).
 - Access tokens are kept with the accounts in `users.json` (a `tokens` list per person, hashes only). Going back to 0.3 is safe: 0.3 ignores the list and keeps it when it saves the file.
 - No data-repository tag or backup is needed beyond the usual ones: records and type definitions do not change.
+- **Types without an `icon` or `color` no longer borrow defaults from the code** (the table for the first instance's type names is gone): such a type gets a colour derived from its name and a box icon, and types not placed on the Types page follow alphabetically. An instance that relied on those defaults sets `icon` and `color` in its type definitions and saves its menu order (Types page) before upgrading, or its types change colour and order.
 
 ## [0.3.0] - 2026-11-25
 

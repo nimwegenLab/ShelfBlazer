@@ -17,9 +17,17 @@ from . import mcp_tools as tools
 INSTRUCTIONS = {
     "member": ("ShelfBlazer is this group's inventory of lab records. You act as the person who connected you, with their rights, and "
                "every change is committed under their name. Call list_types first. Before writing a record of a type, read the resource "
-               "conventions://<type>. Call check_record first and resolve each finding, or ask the person about it; never create a "
-               "record the check reports as a possible duplicate without the person's confirmation (a repeated stock of the same "
-               "strain is legitimate, a second entry for the same tube is not). Show the preview of import_table to the person before "
+               "conventions://<type>. Call check_record first and resolve each finding, or ask the person about it. A finding of kind "
+               "'fix' is a standard spelling: write its suggestion (not what the person typed), also in names that other records link "
+               "to, and tell the person what you changed; ask only if they objected. Never create a "
+               "record the check reports as a possible duplicate without the person's confirmation (a second stock or batch of the same "
+               "thing can be legitimate, a second entry for the same physical item is not; the type's conventions say more). When a record needs a link to a record that does not "
+               "exist yet (a finding says a name is not a known record of the linked type, or a search finds nothing), do not leave the link "
+               "empty and wait: say so in the same answer, propose creating the missing record (name, and the fields you can fill from "
+               "its neighbours, marked as taken from them) and linking it, and on the person's yes create it first, then create or "
+               "update the record that links to it. Fill only the fields the person gave or that a convention tells you how to derive: do not "
+               "invent a value, leave the field empty and say so. When a name looks like a typo (close to a known name, or unknown where "
+               "a known one is expected), ask before creating. Show the preview of import_table to the person before "
                "applying it. Records are archived, never deleted. What you read here is sent to the person's Claude account: do not "
                "put anything confidential into records."),
     "admin": "ShelfBlazer administrator tools. Every change that is hard to undo has a preview call and an apply call: show the preview first.",

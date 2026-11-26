@@ -11,7 +11,7 @@
     shelfblazer lfs-setup          # store attached files with Git LFS in an existing data repo (one commit)
     shelfblazer erase-user alice --yes                 # right to erasure: remove the account, keep its user ID as a tombstone
                                                        # (refuses while alice still has personal records: move or archive them first)
-    shelfblazer move-to-personal alice BS-34..BS-756 --yes   # administrators: alice's lab records into her personal collection
+    shelfblazer move-to-personal alice ST-34..ST-756 --yes   # administrators: alice's lab records into her personal collection
 
 Everything the server needs lives under one runtime home (default ``var/``, or $SHELFBLAZER_HOME, or --home):
 ``<home>/data`` (records), ``<home>/instance`` (users, secret key). --data / --instance override the single folders.
@@ -92,7 +92,7 @@ def init_empty(a, dst):
 
 def import_stubs(users, path, create=True):
     """Accounts (without passwords) for the importer's user stubs. Existing accounts are left alone, except that an imported one
-    (it has a LabCollector ID) gets the creation date the importer found. With create=False nobody is created (people erased or
+    (it has an ID from the previous system) gets the creation date the importer found. With create=False nobody is created (people erased or
     left out on purpose do not come back). -> (created, already present, creation dates set)"""
     made = skipped = dated = 0
     with open(path, encoding="utf-8") as fh:
@@ -245,7 +245,7 @@ def cmd_rename_prefix(a):
 
 
 def expand_ids(items):
-    """IDs from the command line or a file: single IDs ("BS-15"), ranges ("BS-34..BS-756" or "BS-34..756"), commas or spaces between."""
+    """IDs from the command line or a file: single IDs ("ST-15"), ranges ("ST-34..ST-756" or "ST-34..756"), commas or spaces between."""
     from shelfblazer import ids
     out = []
     for item in re.split(r"[\s,]+", " ".join(items).upper()):
@@ -358,7 +358,7 @@ def main(argv=None):
     s = sub.add_parser("rename-prefix", help="give a type a new ID prefix, rewriting records and links (one git commit; preview without --yes)")
     s.add_argument("type"); s.add_argument("prefix"); s.add_argument("--data"); s.add_argument("--yes", action="store_true"); s.set_defaults(f=cmd_rename_prefix)
     s = sub.add_parser("move-to-personal", help="administrators: move a person's lab records into their personal collection (one git commit; preview without --yes)")
-    s.add_argument("username"); s.add_argument("ids", nargs="*", help="IDs or ranges such as BS-34..BS-756")
+    s.add_argument("username"); s.add_argument("ids", nargs="*", help="IDs or ranges such as ST-34..ST-756")
     s.add_argument("--from", dest="from_file", help="a file of IDs and ranges (one or more per line; # starts a comment)")
     s.add_argument("--data"); s.add_argument("--yes", action="store_true"); s.set_defaults(f=cmd_move_to_personal)
     s = sub.add_parser("lfs-setup", help="store attached files with Git LFS in an existing data repository")

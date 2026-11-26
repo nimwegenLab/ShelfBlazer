@@ -27,7 +27,7 @@ class SchemaError(ValueError):
 
 
 def is_system(f):
-    """Fields the app manages itself (kept from the old database): not editable on the type page."""
+    """Fields the app manages itself (imported from a previous system): not editable on the type page."""
     return f["key"] in SYSTEM_KEYS
 
 
@@ -64,7 +64,7 @@ def new_type(name, prefix, color=None):
     return schema
 
 
-def add_field(schema, label, ftype, key=None, required=False, options=None, to=None, expr=None):
+def add_field(schema, label, ftype, key=None, required=False, options=None, to=None, expr=None, pictures_only=False):
     schema = copy.deepcopy(schema)
     label = (label or "").strip()
     if not label:
@@ -88,6 +88,8 @@ def add_field(schema, label, ftype, key=None, required=False, options=None, to=N
         f["multiple"] = True
     if ftype == "computed":
         f["expr"] = (expr or "").strip()
+    if ftype == "file" and pictures_only:
+        f["pictures_only"] = True
     schema["fields"].append(f)
     return schema
 
@@ -107,7 +109,7 @@ def clean_options(options):
     return out
 
 
-def update_field(schema, key, label=None, required=None, ftype=None, add_options=None, remove_options=None, expr=None, display=None, used_options=()):
+def update_field(schema, key, label=None, required=None, ftype=None, add_options=None, remove_options=None, expr=None, display=None, used_options=(), pictures_only=None):
     schema = copy.deepcopy(schema)
     f = get_field(schema, key)
     if is_system(f):
@@ -154,6 +156,13 @@ def update_field(schema, key, label=None, required=None, ftype=None, add_options
             f.pop("display", None)                                   # as stored: the same as no setting
         else:
             f["display"] = display
+    if pictures_only is not None:
+        if f["type"] != "file":
+            raise SchemaError("only File fields can be limited to pictures")
+        if pictures_only:
+            f["pictures_only"] = True
+        else:
+            f.pop("pictures_only", None)
     return schema
 
 
@@ -182,13 +191,16 @@ def set_hidden(schema, key, hidden):
     if hidden:
         f["hidden"] = True
         schema["list_columns"] = [c for c in schema.get("list_columns", []) if c != key]
+        if schema.get("thumbnail") == key:         # a hidden field cannot be the record picture
+            schema.pop("thumbnail")
     else:
         f.pop("hidden", None)
     return schema
 
 
-def update_settings(schema, name=None, color=None, list_columns=None, permissions=None, icon=None):
-    """color, icon: a palette name or icon name, or '' to go back to the default. list_columns: keys the person ticked (order is normalised)."""
+def update_settings(schema, name=None, color=None, list_columns=None, permissions=None, icon=None, thumbnail=None):
+    """color, icon: a palette name or icon name, or '' to go back to the default. list_columns: keys the person ticked (order is normalised).
+    thumbnail: the key of the File field whose first image is the record picture, or '' for none (None leaves it as it is)."""
     schema = copy.deepcopy(schema)
     if name is not None:
         if not name.strip():
@@ -204,6 +216,13 @@ def update_settings(schema, name=None, color=None, list_columns=None, permission
             schema["icon"] = icon
         else:
             schema.pop("icon", None)
+    if thumbnail is not None:
+        if thumbnail and not any(f["key"] == thumbnail and f["type"] == "file" and not f.get("hidden") and not is_system(f) for f in _fields(schema)):
+            raise SchemaError("the record picture must come from a File field of this type")
+        if thumbnail:
+            schema["thumbnail"] = thumbnail
+        else:
+            schema.pop("thumbnail", None)
     if list_columns is not None:
         wanted = set(list_columns)
         visible = [f["key"] for f in _fields(schema) if not f.get("hidden") and f["key"] != "name" and f["key"] not in SYSTEM_KEYS and f["type"] != "file"]
@@ -277,6 +296,8 @@ def validate_schema(slug, schema, others, old=None):
             problems.append(f"field '{k}': unknown display setting")
         if "validate" in f and f["validate"] not in FIELD_VALIDATORS:
             problems.append(f"field '{k}': unknown validate setting")
+        if "pictures_only" in f and (f["pictures_only"] is not True or t != "file"):
+            problems.append(f"field '{k}': pictures_only can only be true, on a File field")
         if "legacy" in f and (f["legacy"] is not True or f.get("required") or t in ("file", "computed")):
             problems.append(f"field '{k}': legacy can only be true, on an optional field that is neither a file nor calculated")
         if "help" in f and (not isinstance(f["help"], str) or len(f["help"]) > 200):

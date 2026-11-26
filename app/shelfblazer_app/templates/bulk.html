@@ -21,13 +21,13 @@
 {% elif f.type == 'number' %}<input name="value_{{ f.key }}" inputmode="decimal">
 {% elif f.type == 'date' %}<input type="date" name="value_{{ f.key }}">
 {% elif f.type == 'url' %}<input type="url" name="value_{{ f.key }}" placeholder="https://">
-{% elif f.type == 'ref' %}<input class="mono" name="value_{{ f.key }}" data-ref-to="{{ f.to or '*' }}" data-multiple="1" placeholder="IDs, e.g. PL-142, PL-12">
+{% elif f.type == 'ref' %}<input class="mono" name="value_{{ f.key }}" data-ref-to="{{ f.to or '*' }}" data-multiple="1" placeholder="IDs, e.g. {{ (schemas[f.to].prefix if f.to in schemas else 'AB') }}-142, {{ (schemas[f.to].prefix if f.to in schemas else 'AB') }}-12">
 {% else %}<input name="value_{{ f.key }}">{% endif %}</label></div>{% endfor %}</div>
 
 {% if multi %}<div class="bulk-sec" data-for="add remove"><label>Field<select name="field" id="opt-field">{% for f in multi %}<option value="{{ f.key }}" {% if values.get('field') == f.key %}selected{% endif %}>{{ f.label }}</option>{% endfor %}</select></label>
 {% for f in multi %}<div class="bulk-val" data-field="{{ f.key }}"><label>Option or record for {{ f.label }}
 {% if f.type == 'multiselect' %}<select name="opt_{{ f.key }}">{% for v, l in f.options %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
-{% else %}<input class="mono" name="opt_{{ f.key }}" data-ref-to="{{ f.to or '*' }}" data-multiple="0" placeholder="one ID, e.g. PL-142">{% endif %}</label></div>{% endfor %}</div>{% endif %}
+{% else %}<input class="mono" name="opt_{{ f.key }}" data-ref-to="{{ f.to or '*' }}" data-multiple="0" placeholder="one ID, e.g. {{ (schemas[f.to].prefix if f.to in schemas else 'AB') }}-142">{% endif %}</label></div>{% endfor %}</div>{% endif %}
 
 {% if is_admin %}<div class="bulk-sec" data-for="owner"><label>New owner<select name="owner">{% for uid, n, login in people %}<option value="{{ uid }}">{{ n }} ({{ login }})</option>{% endfor %}</select></label></div>{% endif %}
 

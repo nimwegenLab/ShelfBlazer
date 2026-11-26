@@ -10,14 +10,14 @@ from shelfblazer_app.web import create_app
 auth.SCRYPT.update(n=2**10)  # fast hashing in tests; stored hashes carry their own parameters
 
 PW = "correct horse battery"
-STRAIN = {"name": "Strain", "prefix": "ST", "list_columns": ["id", "name", "plasmid", "storage", "created_by"], "fields": [
+STRAIN = {"name": "Strain", "prefix": "ST", "icon": "bacterium", "color": "blue", "list_columns": ["id", "name", "plasmid", "storage", "created_by"], "fields": [
     {"key": "name", "label": "Name", "type": "text", "required": True},
     {"key": "genotype", "label": "Genotype", "type": "text"},
     {"key": "storage", "label": "Storage", "type": "text", "legacy": True},
     {"key": "plasmid", "label": "Plasmid(s)", "type": "ref", "to": "plasmid", "multiple": True},
     {"key": "status", "label": "Status", "type": "select", "options": ["ok", "bad"]},
     {"key": "legacy_owner", "label": "Legacy owner", "type": "text"}]}
-PLASMID = {"name": "Plasmid", "prefix": "PL", "list_columns": ["id", "name", "created_by"], "fields": [
+PLASMID = {"name": "Plasmid", "prefix": "PL", "icon": "dna", "color": "green", "list_columns": ["id", "name", "created_by"], "fields": [
     {"key": "name", "label": "Name", "type": "text", "required": True},
     {"key": "resistance", "label": "Resistance", "type": "multiselect", "options": ["Kan", "Amp"]},
     {"key": "sequence", "label": "Sequence", "type": "longtext"},
@@ -111,6 +111,8 @@ class Base(unittest.TestCase):
                 json.dump(s, fh)
         with open(os.path.join(self.repo, "config", "storage_places.yaml"), "w") as fh:
             fh.write("[]")
+        with open(os.path.join(self.repo, "config", "type_order.yaml"), "w") as fh:       # a real instance saves its order (Types page)
+            json.dump(["strain", "plasmid"], fh)
         subprocess.run(["git", "init", "-q", "-b", "main", self.repo], check=True)
         git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
         self.app = create_app(self.repo, self.inst, **self.app_options)

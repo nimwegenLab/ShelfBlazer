@@ -5,7 +5,7 @@ written, and committed to git with the acting user as author. The in-memory ``re
 """
 import contextlib, datetime, fcntl, glob, json, logging, os, re, shutil, subprocess, threading
 
-from . import builtin, checks, fields as fieldrules, formula, history, ids, perms, schema_edit, uploads
+from . import checks, fields as fieldrules, formula, history, ids, perms, schema_edit, uploads
 from . import ids as ids_mod                                                  # bulk_apply has a parameter called ids
 from .auth import UID_RE, Users                                            # a user ID; Users.collection_visible
 from .errors import Conflict, Forbidden, NotFound, StoreError, ValidationError
@@ -197,14 +197,14 @@ class Store:
             log.warning(msg)
 
     def type_icon(self, slug):
-        """The icon of a type: its "icon" setting, else the first instance's default (builtin.py), else a box."""
+        """The icon of a type: its "icon" setting, else a box."""
         icon = (self.schemas.get(slug) or {}).get("icon")
-        return icon if icon in TYPE_ICONS else builtin.ICONS.get(slug, "box")
+        return icon if icon in TYPE_ICONS else "box"
 
     def type_color(self, slug):
-        """The palette colour name of a type ("color" setting, else builtin.py), or None for a colour derived from its name."""
+        """The palette colour name of a type ("color" setting), or None for a colour derived from its name."""
         color = (self.schemas.get(slug) or {}).get("color")
-        return color if color in TYPE_COLORS else builtin.COLORS.get(slug)
+        return color if color in TYPE_COLORS else None
 
     def order_of(self, type_slug):
         return [f["key"] for f in self.schemas[type_slug]["fields"]]
@@ -427,10 +427,9 @@ class Store:
         return v
 
     def ordered_slugs(self):
-        """Type slugs in menu order: the saved order (config/type_order.yaml), then types not in it (alphabetical; the first
-        instance's types in their old order, see builtin.py)."""
+        """Type slugs in menu order: the saved order (config/type_order.yaml), then types not in it, alphabetically."""
         first = [s for s in self.type_order if s in self.schemas]
-        rest = sorted((s for s in self.schemas if s not in first), key=lambda s: (builtin.ORDER.index(s) if s in builtin.ORDER else 99, s))
+        rest = sorted(s for s in self.schemas if s not in first)
         return first + rest
 
     def move_type(self, slug, direction, actor):
@@ -835,6 +834,11 @@ class Store:
         with self._write_lock():
             rec = self._get_checked(rid, actor)
             field = self._file_field(rec, field)
+            if next(f for f in self.schemas[rec["type"]]["fields"] if f["key"] == field).get("pictures_only"):
+                try:
+                    uploads.check(name, len(content), pictures_only=True)
+                except uploads.UploadError as e:
+                    raise ValidationError({"file": f"{name}: {e}"})
             current = list(rec["fields"].get(field, []))
             if len(current) >= uploads.MAX_FILES_PER_RECORD:
                 raise ValidationError({"file": f"a record can hold at most {uploads.MAX_FILES_PER_RECORD} files"})

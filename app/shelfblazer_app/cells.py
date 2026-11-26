@@ -69,7 +69,7 @@ def make(store, users, display):
         return c
 
     def form_descriptors(slug, values=None, errors=None, creating=False, place_new=False, keep_legacy=(), typed=None):
-        """Fields of the form. A field marked "legacy": true (the free-text `storage`, a label from the old database) is only offered where the record already has a value (keep_legacy: those keys, or True for all, as in bulk edit); chemicals use Storage place."""
+        """Fields of the form. A field marked "legacy": true (the free-text `storage`, a label imported from a previous system) is only offered where the record already has a value (keep_legacy: those keys, or True for all, as in bulk edit); chemicals use Storage place."""
         values, errors, out = values or {}, errors or {}, []
         for f in store.schemas[slug]["fields"]:
             k = f["key"]
@@ -96,7 +96,7 @@ def make(store, users, display):
             if f["type"] == "file":
                 v = [os.path.basename(x) for x in (v or [])]                                 # the files already attached (shown by name)
             out.append(dict(key=k, label=f["label"], type=f["type"], value=v, options=opts, error=errors.get(k),
-                            required=f.get("required"), help=f.get("help"), to=f.get("to"), multiple=f.get("multiple", True), fold=bool(f.get("fold")),
+                            required=f.get("required"), help=f.get("help"), to=f.get("to"), multiple=f.get("multiple", True), fold=bool(f.get("fold")), pictures_only=bool(f.get("pictures_only")),
                             new_place=bool(place_new and fieldrules.is_place(f)),
                             new_option=bool(place_new and f.get("addable") and not f.get("source")),
                             new_value=(typed or {}).get(k, "")))                                     # a new option or place typed before an error

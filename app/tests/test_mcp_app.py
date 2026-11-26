@@ -1,11 +1,13 @@
 """The MCP endpoint: access tokens (create, show once, store hashed, expire, revoke, throttle), the tools run as the token owner with
 member rights, commits say "(via MCP)", and the endpoint is off unless asked for."""
-import json, re, time, unittest
+import base64, json, re, time, unittest
+from unittest import mock
 
 from starlette.testclient import TestClient
 
 from test_app import Base, PW
 from shelfblazer.auth import MAX_TOKENS
+from shelfblazer_app import mcp_tools
 
 
 class Rpc:
@@ -202,13 +204,14 @@ class TestEndpoint(McpBase):
         rpc = self.rpc("alice")
         names = {t["name"] for t in rpc.raw("tools/list").json()["result"]["tools"]}
         self.assertEqual(names, {"list_types", "search_records", "get_record", "check_record", "create_record", "update_record",
-                                 "archive_record", "restore_record", "import_table", "undo_import"})
+                                 "archive_record", "restore_record", "import_table", "undo_import", "get_picture"})
         self.assertEqual(self.http.post("/mcp/admin", headers=rpc.headers, json={}).status_code, 404)
 
     def test_instructions_and_resources(self):
         rpc = self.rpc("alice")
         init = rpc.raw("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}).json()
         self.assertIn("conventions://", init["result"]["instructions"])
+        self.assertIn("propose creating the missing record", init["result"]["instructions"])
         with open(self.repo + "/config/checks/plasmid.yaml", "w") if __import__("os").makedirs(self.repo + "/config/checks", exist_ok=True) is None else None as fh:
             json.dump({"guidance": "Name plasmids pXY-1."}, fh)
         self.store.reload()
@@ -268,6 +271,27 @@ class TestTools(McpBase):
         self.assertEqual(p["linked_from"][0]["id"], st["id"])
         self.assertEqual(p["files"], {"attachments": ["map.txt"]})
         self.assertNotIn("CONTENT", json.dumps(p))
+
+    def test_the_record_picture_can_be_fetched_and_nothing_else(self):
+        alice = self.users.get("alice")
+        self.store.save_schema("consumable", {"name": "Consumable", "prefix": "CS", "list_columns": ["id", "name"], "thumbnail": "photo", "fields": [
+            {"key": "name", "label": "Name", "type": "text", "required": True}, {"key": "photo", "label": "Photo", "type": "file"},
+            {"key": "other", "label": "Other", "type": "file"}]}, self.users.get("root"), create=True)
+        rid = self.alice.call("create_record", type="consumable", name="Tips")[1]["id"]
+        self.assertIn("no picture", self.bob.call("get_picture", id=rid)[1])
+        self.assertNotIn("picture", self.bob.call("get_record", id=rid)[1])
+        png = b"\x89PNG\r\n\x1a\n" + b"x" * 20
+        self.store.add_attachment(rid, alice, "gel.png", b"nope", field="other")                  # another field: not the picture
+        self.store.add_attachment(rid, alice, "box.heic", b"heic", field="photo")                 # a format the agent cannot read
+        self.assertIn("no picture", self.bob.call("get_picture", id=rid)[1])
+        self.store.add_attachment(rid, alice, "box.PNG", png, field="photo")
+        self.assertEqual(self.bob.call("get_record", id=rid)[1]["picture"], "box.PNG")
+        res = self.bob.raw("tools/call", {"name": "get_picture", "arguments": {"id": rid.lower()}}).json()["result"]
+        self.assertFalse(res["isError"])
+        item = res["content"][0]
+        self.assertEqual((item["type"], item["mimeType"], base64.b64decode(item["data"])), ("image", "image/png", png))
+        with mock.patch.object(mcp_tools, "PICTURE_MAX_BYTES", 10):
+            self.assertIn("larger than", self.bob.call("get_picture", id=rid)[1])
 
     def test_check_record_validation_and_duplicates_write_nothing(self):
         self.alice.call("create_record", type="strain", name="Same")

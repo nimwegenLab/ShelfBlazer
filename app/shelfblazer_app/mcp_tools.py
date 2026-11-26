@@ -7,12 +7,13 @@ an administrator's member token has a member's rights and a member's view. The t
 
 ``TOOLS`` is the registry: name -> Tool(function, required scope, description). A tool is offered, and runs, only for tokens whose
 scope allows it (``allowed``). Left out of the member tools on purpose (docs/design.md, section 18): move to the lab collection,
-bulk edit, files, account settings, scan, export.
+bulk edit, attaching files (the record picture can be read: get_picture), account settings, scan, export.
 """
-import dataclasses, functools
+import dataclasses, functools, os
 from types import SimpleNamespace
 from typing import Callable
 
+from mcp.server.mcpserver import Image
 from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 
 from shelfblazer import checks, fields as fieldrules, ids, perms, tableimport as ti
@@ -25,6 +26,8 @@ PAGE_MAX = 100                         # records in one answer
 PLACES_SHOWN = 200
 SHOWN_ROWS = 100                       # import rows in a preview (rows with a problem or a change come first)
 HISTORY_SHOWN = 10
+PICTURE_FORMATS = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "webp": "webp", "gif": "gif"}     # what the agent can look at (no AVIF, no HEIC)
+PICTURE_MAX_BYTES = 5 * 1024 * 1024
 
 
 class ToolFailure(ToolError, ResourceError):
@@ -298,7 +301,7 @@ def search_records(env, actor, type: str = "", text: str = "", collection: str =
     all types). ``text``: words, an ID or a code. ``collection``: 'lab' (default), 'mine' (your personal collection), 'others' (personal
     collections other people share) or 'any'. ``owner``: 'me' or a username. ``archived``: also archived records.
     ``where``: conditions on field keys (needs ``type``; name, created_at, updated_at, owner, collection and type work for any type), all of
-    which must hold: {"plasmid": "empty"}, {"plasmid": "not empty"}, {"genotype": "contains:lacZ"}, {"status": "ok"} (equal, ignoring case),
+    which must hold: {"supplier": "empty"}, {"supplier": "not empty"}, {"name": "contains:blue"}, {"status": "ok"} (equal, ignoring case),
     {"updated_at": ">=2026-11-01"}, {"length": "<5000"}; also '!=x', 'not contains:x', '<=x', '>x', and a list of conditions for one field
     (a date range). Links compare by record ID, people and storage places by name.
     ``fields``: field keys whose values come back with each result. ``sequence``: a nucleotide sequence (6 or more bases) to find in the
@@ -392,8 +395,35 @@ def get_record(env, actor, id: str):
     linked = [{"id": r["id"], "name": r["name"], "type": r["type"], "field": label} for label, r in store.referenced_by(rec["id"]) if r["id"] in seen]
     history = [{"commit": h["sha"], "date": h["date"], "by": _person(env, h["author"]),
                 "what": UID_IN_TEXT.sub(lambda m: _person(env, m.group(0)), h["subject"])} for h in store.history(rec["id"], HISTORY_SHOWN)]
-    return dict(_brief(env, actor, rec), fields=fields, notes=rec["notes"], files=files, version=rec["_version"], linked_from=linked,
+    pic = _picture_path(store, rec)
+    extra = {"picture": pic.rsplit("/", 1)[-1]} if pic else {}              # fetch it with get_picture
+    return dict(_brief(env, actor, rec), **extra, fields=fields, notes=rec["notes"], files=files, version=rec["_version"], linked_from=linked,
                 can_edit=store.can_edit(actor, rec), created_at=rec["created_at"], updated_at=rec["updated_at"], history=history)
+
+
+def _picture_path(store, rec):
+    """The first picture of a record, as a path under data/files (the type's "thumbnail" field), or None."""
+    key = store.schemas[rec["type"]].get("thumbnail")
+    return next((p for p in rec["fields"].get(key, []) if p.rsplit(".", 1)[-1].lower() in PICTURE_FORMATS), None) if key else None
+
+
+@tool()
+def get_picture(env, actor, id: str):
+    """The record's picture (the first image of the type's picture field, see the ``picture`` entry of get_record), as an image you can look
+    at: a photo of the item or its box, for recognising it. Read only; larger than 5 MB, or in a format you cannot read, it is refused."""
+    store = env.store
+    rec = _record(env, actor, id)
+    path = _picture_path(store, rec)
+    if not path:
+        raise ToolFailure(f"{rec['id']} has no picture")
+    base = os.path.realpath(store.files_dir(rec["id"]))
+    full = os.path.realpath(os.path.join(base, os.path.basename(path)))
+    if os.path.dirname(full) != base or not os.path.isfile(full):
+        raise ToolFailure(f"the picture of {rec['id']} is missing")
+    if os.path.getsize(full) > PICTURE_MAX_BYTES:
+        raise ToolFailure(f"the picture of {rec['id']} is larger than {PICTURE_MAX_BYTES // (1024 * 1024)} MB; open it in the browser")
+    with open(full, "rb") as fh:
+        return Image(data=fh.read(), format=PICTURE_FORMATS[full.rsplit(".", 1)[-1].lower()])
 
 
 # ----------------------------------------------------------------------------- write tools

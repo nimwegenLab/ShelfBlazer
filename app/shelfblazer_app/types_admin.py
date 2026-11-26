@@ -73,6 +73,21 @@ def register(app, c):
         c.flash(request, f"Type {name} created with the prefix {prefix}. Add its fields below; new records get IDs like {prefix}-1.")
         return back(slug)
 
+    def formula_examples(slug):
+        """Names for the formula examples, from this instance's types: a type that links to this one, and a link of this one with a field of
+        its target. None when there is none, and the example is left out."""
+        src = next((dict(slug=s, plural=store.schemas[s]["name"].lower() + "s") for s in store.ordered_slugs()
+                    if any(f["type"] == "ref" and f.get("to") == slug for f in store.schemas[s]["fields"])), None)
+        ref = None
+        for f in store.schemas[slug]["fields"]:
+            target = store.schemas.get(f.get("to")) if f["type"] == "ref" else None
+            val = next((g for g in (target or {}).get("fields", []) if g["key"] != "name" and g["type"] in ("select", "multiselect", "text")
+                        and not g.get("hidden") and not se.is_system(g)), None)
+            if val:
+                ref = dict(key=f["key"], target=target["name"].lower() + "s", vkey=val["key"], vlabel=val["label"])
+                break
+        return dict(src=src, ref=ref)
+
     @app.get("/admin/types/{slug}", response_class=HTMLResponse)
     async def type_page(request: Request, slug: str):
         c.need_admin(request)
@@ -85,7 +100,8 @@ def register(app, c):
                                movable=f["key"] != "name" and not system))
         columns = [("id", "ID", True), ("name", "Name", True)] + [(f["key"], f["label"], False) for f in schema["fields"] if f["key"] != "name"
                    and not f.get("hidden") and f["key"] not in se.SYSTEM_KEYS and f["type"] != "file"] + [("created_by", "Owner", False), ("created_at", "Created", False)]
-        return c.render(request, "admin_type.html", slug=slug, schema=schema, fields=fields, columns=columns, colors=TYPE_COLORS, icons=TYPE_ICONS, types=se.FIELD_TYPES,
+        file_fields = [(f["key"], f["label"]) for f in schema["fields"] if f["type"] == "file" and not f.get("hidden") and not se.is_system(f)]
+        return c.render(request, "admin_type.html", slug=slug, schema=schema, fields=fields, columns=columns, file_fields=file_fields, fx=formula_examples(slug), colors=TYPE_COLORS, icons=TYPE_ICONS, types=se.FIELD_TYPES,
                         type_labels=se.TYPE_LABELS, others=[(s, v["name"]) for s, v in store.schemas.items()], n=sum(1 for r in store.records.values() if r["type"] == slug),
                         displays=FIELD_DISPLAYS, perm=schema.get("permissions", {}), warnings=[w for w in store.schema_warnings if f"'{slug}'" in w])
 
@@ -95,7 +111,8 @@ def register(app, c):
         known(slug)
         perms_in = {k: form.get(f"perm_{k}", "") for k in ("read", "create", "edit", "personal")}
         return edit(request, user, slug, lambda s: se.update_settings(s, name=form.get("name", ""), color=form.get("color", ""), icon=form.get("icon", ""),
-                                                                    list_columns=form.getlist("columns"), permissions=perms_in),
+                                                                    list_columns=form.getlist("columns"), permissions=perms_in,
+                                                                    thumbnail=form.get("thumbnail")),
                     f"type {slug}: settings", "Settings saved.")
 
     @app.post("/admin/types/{slug}/fields/add")
@@ -104,7 +121,7 @@ def register(app, c):
         known(slug)
         return edit(request, user, slug, lambda s: se.add_field(s, form.get("label", ""), form.get("type", ""), key=form.get("key") or None,
                                                               required=form.get("required") == "on", options=form.get("options", ""),
-                                                              to=form.get("to") or None, expr=form.get("expr", "")),
+                                                              to=form.get("to") or None, expr=form.get("expr", ""), pictures_only=form.get("pictures_only") == "on"),
                     f"type {slug}: add field {form.get('label', '').strip()}", f"Field “{form.get('label', '').strip()}” added.")
 
     @app.post("/admin/types/{slug}/fields/{key}/update")
@@ -115,7 +132,8 @@ def register(app, c):
         return edit(request, user, slug, lambda s: se.update_field(
             s, key, label=form.get("label"), required=(form.get("required") == "on") if "required_present" in form else None,
             ftype=form.get("type") or None, add_options=form.get("add_options", ""), remove_options=form.getlist("remove_options"),
-            expr=form.get("expr") if "expr" in form else None, display=form.get("display") if "display" in form else None, used_options=used),
+            expr=form.get("expr") if "expr" in form else None, display=form.get("display") if "display" in form else None, used_options=used,
+            pictures_only=(form.get("pictures_only") == "on") if "pictures_present" in form else None),
             f"type {slug}: change field {key}", f"Field {key} saved.")
 
     @app.post("/admin/types/{slug}/fields/{key}/hidden")

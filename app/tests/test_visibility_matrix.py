@@ -204,6 +204,7 @@ class Matrix(McpBase):
         for rid in (a, t, p):
             self.assertTrue(self.tool("get_record", id=rid)[0])
             self.assertTrue(self.tool("get_record", id=rid.lower())[0])
+            self.assertTrue(self.tool("get_picture", id=rid)[0])
             self.assertTrue(self.tool("update_record", id=rid, version=before[rid]["_version"], name="x")[0])
             self.assertTrue(self.tool("archive_record", id=rid)[0])
             self.assertTrue(self.tool("restore_record", id=rid)[0])

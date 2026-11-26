@@ -48,6 +48,23 @@ so "not stated" below means the README does not say, not that the feature is abs
 | eLabFTW | SQL database | Electronic lab notebook with a resource database (reagents, plasmids, cell lines) | The closest lab fit and a large community; a notebook-first system with a database behind it, so records are not plain files and history is not git |
 | Part-DB, InvenTree | SQL database | Electronic components and manufacturing stock | Part-centred; storage locations, labels and event logs, but no lab item types or sequence search stated |
 
+**AI assistants (MCP).** Compared the same way, plus a search for community servers. "Not stated" again means the documentation does not say.
+
+| Tool | MCP | Acts as | What it can write | Safeguards stated |
+|---|---|---|---|---|
+| ShelfBlazer | Built in, off unless switched on | The person, with member rights (administrators too); personal tokens shown once, stored hashed, expiring | Create, update, archive, import | Nothing is deleted; a possible duplicate is refused until the person confirms; imports preview first and can be undone; the group's conventions are read first; history marks "(via MCP)" |
+| Part-DB | Built in, off by default; the page says it "might still change" | The token's owner, further limited by a read-only or edit scope (or OAuth) | Parts, master data, stock, including delete | Read-only tokens cannot write; delete has "no confirmation step"; duplicate check, undo and MCP marking in the log not stated |
+| smallFactory | Built in, served with the web app | Not stated; no token or login mentioned | The documented tools are reads; writes not stated | Not stated |
+| eLabFTW | Not official: several community servers over its REST API (one lists 41 tools), some listed in its documentation | The API key's owner | Experiments, items, uploads, links | Varies by server; not checked |
+| InvenTree | Not official: community servers and a plugin | An API token | Parts, stock, orders | Not checked |
+| Onyo | Not checked | | | |
+
+An MCP endpoint is not a moat: any tool with a REST API can get one, and for eLabFTW several exist already, with more tools than ShelfBlazer's.
+What differs is where the safeguards live. Here some are enforced by the tools (nothing is deleted, a possible duplicate stops the write, an import is one commit that can be undone),
+the rest are instructions to the assistant (do not invent values, ask about a likely typo), and the duplicate stop is a speed bump an assistant can pass with an explicit flag, not a lock.
+Two limits apply to any assistant connected to an inventory: what it reads is sent to the person's AI account, so nothing confidential belongs in records,
+and the endpoint's token handling was reviewed from scratch in a separate AI session, with its findings fixed (section 18).
+
 What this leaves open is a narrow niche: **git as the only store of record, plus a multi-user web interface with accounts,
 per-type permissions and user-defined item types**, for a small group that wants records it can read, diff and back up as files.
 Neither git-based tool covers that, and the database-backed ones, however capable, give up the plain-file property.
@@ -551,7 +568,8 @@ Registry in `shelfblazer_app/mcp_tools.py`: each tool has a required scope; `/mc
 |---|---|
 | `list_types` | readable types, their fields and options, where the person may add records |
 | `search_records` | the list query: type, text, collection (`lab`, `mine`, `others`, `any`), owner, archived; paged, with the total. Also `where` (conditions on fields: empty, not empty, contains, equal, `<`/`>` for numbers and dates, including `created_at`/`updated_at`), `fields` (values returned with each result), `sequence` and `mismatches` (the list page's sequence search), `sort` (ID, name, created, updated or a field; `-` for descending) and `group_by` (counts per value instead of records). Only fields the record page shows; links only to records the person may see, so conditions and counts reveal nothing hidden |
-| `get_record` | fields, notes, links both ways, file names (no contents), recent history, and the `version` |
+| `get_record` | fields, notes, links both ways, file names (no contents), the name of the record picture, recent history, and the `version` |
+| `get_picture` | the record picture (the first jpg, png, webp or gif in the type's `thumbnail` field) as an image the agent can look at; read only, same visibility as `get_record`, refused above 5 MB |
 | `check_record` | validation errors plus `checks.review` findings (duplicates, fixes, warnings); writes nothing |
 | `create_record` | into the lab or one's own collection; with errors, or a possible duplicate not confirmed with `confirm_duplicates`, nothing is written |
 | `update_record` | named fields only, needs the `version` read by `get_record` (a newer edit is a conflict); findings are those the change adds |
@@ -561,13 +579,13 @@ Registry in `shelfblazer_app/mcp_tools.py`: each tool has a required scope; `/mc
 
 Resources: `conventions://<type>` (the `guidance` of the type's rules file, `config/checks/<type>.yaml`) and `schema://<type>`. Server instructions tell the agent to read the conventions, call `check_record` first, never create a possible duplicate without the person's confirmation, and show the import preview before applying it.
 
-**Left out on purpose:** move to the lab collection (cannot be undone by the person), bulk edit and bulk archive (the import with IDs covers bulk changes, with a preview), attaching or removing files, "Visible to others" and other account settings, passwords and tokens, scan, export. Each is a web page the person already has.
+**Left out on purpose:** move to the lab collection (cannot be undone by the person), bulk edit and bulk archive (the import with IDs covers bulk changes, with a preview), attaching or removing files (only the record picture can be read), "Visible to others" and other account settings, passwords and tokens, scan, export. Each is a web page the person already has.
 
 ### 18.4 Guard
 `test_visibility_matrix.py` requests every tool for each hidden record (archived by someone else, a type only administrators read, a personal collection not shared) and lists `/mcp` among the covered routes; `test_every_tool_is_covered` fails when a tool is added without being requested there.
 
 ### 18.5 Before it is switched on for a group
-- The authentication code for tokens (`Users.create_token`, `authenticate_token`, the gateway in `mcp_server.py`) was reviewed on 2026-11-25 and its findings fixed (commit 313bdd0: wrong tokens have their own budget and never lock valid ones out, creating a token asks for the password, any password change revokes the person's tokens). An independent review of the whole authentication code (ROADMAP) remains parked.
+- The authentication code for tokens (`Users.create_token`, `authenticate_token`, the gateway in `mcp_server.py`) was reviewed from scratch on 2026-11-25 in a separate Claude Code session and its findings fixed (commit 313bdd0: wrong tokens have their own budget and never lock valid ones out, creating a token asks for the password, any password change revokes the person's tokens). An independent review of the whole authentication code (ROADMAP) remains parked.
 - Tell members that what their agent reads goes to their Claude account (or whatever service the agent talks to), and that nothing confidential belongs in a personal collection (17.3).
 
 ## 19. Checks before saving (D47, built 2026-11-25)

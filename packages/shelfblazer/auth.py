@@ -195,7 +195,7 @@ class Users:
 
     def set_created(self, username, created):
         """Set the creation date shown on the Users page (an ISO date-time such as 2014-12-03T14:22:37): the importer knows when the
-        old LabCollector account was made. Returns True when it changed."""
+        account in the previous system was made. Returns True when it changed."""
         if not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d", created or ""):
             raise ValueError("created: use YYYY-MM-DDTHH:MM:SS")
         with self._txn() as d:
